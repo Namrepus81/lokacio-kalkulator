@@ -119,19 +119,31 @@ logicButton.addEventListener("click", renderLogicalPlacement);
 
 function handleFileChange(event) {
   const file = event.target.files[0];
-  if (!file) return;
+  if (!file) {
+    dataStatus.textContent = "Nem lett fájl kiválasztva.";
+    return;
+  }
+  dataStatus.textContent = `Napi export kiválasztva: ${file.name}. Olvasás indul...`;
   readUploadedRows(file, (parsedRows) => setRows(parsedRows, file.name));
 }
 
 function handleMasterFileChange(event) {
   const file = event.target.files[0];
-  if (!file) return;
+  if (!file) {
+    masterStatus.textContent = "Nem lett törzsadat fájl kiválasztva.";
+    return;
+  }
+  masterStatus.textContent = `Törzsadat kiválasztva: ${file.name}. Olvasás indul...`;
   readUploadedRows(file, (parsedRows) => setMasterRows(parsedRows, file.name));
 }
 
 function readUploadedRows(file, onRows) {
   const extension = file.name.split(".").pop().toLowerCase();
   const reader = new FileReader();
+
+  reader.onerror = () => {
+    showImportError(`Nem sikerült olvasni a fájlt: ${file.name}`);
+  };
 
   reader.onload = (loadEvent) => {
     try {
@@ -142,7 +154,7 @@ function readUploadedRows(file, onRows) {
       }
 
       if (!window.XLSX) {
-        showImportError("Az Excel olvasó könyvtár nem töltődött be. Internet kell hozzá, vagy használj CSV fájlt.");
+        showImportError("Az Excel olvasó nem töltődött be mobilon. Frissítsd az oldalt, vagy próbáld CSV-ként mentve feltölteni.");
         return;
       }
 
