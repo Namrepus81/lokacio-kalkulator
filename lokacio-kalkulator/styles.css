@@ -228,6 +228,13 @@ h3 {
   color: var(--muted);
 }
 
+.scan-button {
+  min-width: 120px;
+  border: 1px solid rgba(87, 160, 255, 0.35);
+  background: rgba(35, 118, 255, 0.16);
+  color: var(--blue-2);
+}
+
 .top-search {
   display: grid;
   grid-template-columns: auto 1fr;
@@ -653,6 +660,68 @@ h3 {
   margin: 5px 0;
 }
 
+.scanner-modal[hidden] {
+  display: none;
+}
+
+.scanner-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(0, 0, 0, 0.72);
+}
+
+.scanner-card {
+  width: min(560px, 100%);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  padding: 16px;
+}
+
+.scanner-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.scanner-frame {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(87, 160, 255, 0.45);
+  border-radius: 8px;
+  background: #000;
+  aspect-ratio: 4 / 3;
+}
+
+.scanner-frame video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.scan-line {
+  position: absolute;
+  left: 12%;
+  right: 12%;
+  top: 50%;
+  height: 2px;
+  background: var(--green);
+  box-shadow: 0 0 18px rgba(53, 208, 127, 0.9);
+}
+
+.scanner-status {
+  margin-top: 12px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
 .issues-panel,
 .missing-panel,
 .table-panel {
@@ -744,6 +813,11 @@ tbody tr:hover {
 
   .user-chip {
     display: none;
+  }
+
+  .scan-button {
+    grid-column: 1 / -1;
+    width: 100%;
   }
 
   .hero-grid,

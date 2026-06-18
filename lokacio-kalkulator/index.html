@@ -52,6 +52,7 @@
             <span>⌕</span>
             <input form="searchForm" id="searchInput" type="search" inputmode="numeric" placeholder="Keresés cikkszámra..." autocomplete="off">
           </div>
+          <button class="scan-button" id="scanButton" type="button">Kamera scan</button>
           <div class="user-chip">
             <span class="avatar">R</span>
             <div>
@@ -78,7 +79,7 @@
               </div>
             </form>
 
-            <p class="hint">Vonalkód olvasóval is használható, mert a beolvasott cikkszámot ugyanide írja.</p>
+            <p class="hint">Telefonkamerával is próbálható: a Kamera scan gomb beolvassa a cikkszámot, majd automatikusan keres.</p>
           </section>
 
           <section class="metric-card blue">
@@ -197,5 +198,22 @@
         </section>
       </section>
     </main>
+
+    <section class="scanner-modal" id="scannerModal" hidden>
+      <div class="scanner-card">
+        <div class="scanner-head">
+          <div>
+            <p class="eyebrow">Kamera</p>
+            <h2>Vonalkód scan</h2>
+          </div>
+          <button class="secondary-button" id="closeScannerButton" type="button">Bezárás</button>
+        </div>
+        <div class="scanner-frame">
+          <video id="scannerVideo" playsinline muted></video>
+          <div class="scan-line"></div>
+        </div>
+        <p class="scanner-status" id="scannerStatus">Tartsd a vonalkódot a keretbe.</p>
+      </div>
+    </section>
   </body>
 </html>

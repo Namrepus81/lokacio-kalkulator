@@ -109,6 +109,15 @@ const logicButton = document.querySelector("#logicButton");
 const logicList = document.querySelector("#logicList");
 const masterStatus = document.querySelector("#masterStatus");
 const missingMasterList = document.querySelector("#missingMasterList");
+const scanButton = document.querySelector("#scanButton");
+const scannerModal = document.querySelector("#scannerModal");
+const scannerVideo = document.querySelector("#scannerVideo");
+const scannerStatus = document.querySelector("#scannerStatus");
+const closeScannerButton = document.querySelector("#closeScannerButton");
+
+let scannerStream = null;
+let scannerDetector = null;
+let scannerActive = false;
 
 fileInput.addEventListener("change", handleFileChange);
 masterFileInput.addEventListener("change", handleMasterFileChange);
@@ -116,6 +125,8 @@ searchForm.addEventListener("submit", handleSearch);
 issueFilter.addEventListener("input", renderIssues);
 loadSampleButton.addEventListener("click", () => setRows(SAMPLE_ROWS, "Minta adatok betöltve"));
 logicButton.addEventListener("click", renderLogicalPlacement);
+scanButton.addEventListener("click", startScanner);
+closeScannerButton.addEventListener("click", stopScanner);
 
 function handleFileChange(event) {
   const file = event.target.files[0];
@@ -447,6 +458,88 @@ function handleSearch(event) {
 
   const foundRows = analyzedRows.filter((row) => row.cikkszam.toLowerCase() === query);
   renderResult(foundRows, query);
+}
+
+async function startScanner() {
+  if (!("mediaDevices" in navigator) || !navigator.mediaDevices.getUserMedia) {
+    showScannerMessage("A böngésző nem engedi a kamera használatát.");
+    return;
+  }
+
+  if (!("BarcodeDetector" in window)) {
+    showScannerMessage("Ez a böngésző nem támogatja a kamerás vonalkódolvasást. Próbáld Chrome Androidon.");
+    return;
+  }
+
+  scannerModal.hidden = false;
+  scannerStatus.textContent = "Kamera indítása...";
+
+  try {
+    scannerDetector = new BarcodeDetector({
+      formats: ["code_128", "code_39", "ean_13", "ean_8", "qr_code", "itf"],
+    });
+    scannerStream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { ideal: "environment" },
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+      },
+      audio: false,
+    });
+    scannerVideo.srcObject = scannerStream;
+    await scannerVideo.play();
+    scannerActive = true;
+    scannerStatus.textContent = "Tartsd a vonalkódot a keretbe.";
+    scanLoop();
+  } catch (error) {
+    stopScanner();
+    showScannerMessage(`Nem sikerült elindítani a kamerát: ${error.message}`);
+  }
+}
+
+async function scanLoop() {
+  if (!scannerActive || !scannerDetector) return;
+
+  try {
+    const codes = await scannerDetector.detect(scannerVideo);
+    if (codes.length) {
+      const rawValue = stringify(codes[0].rawValue);
+      if (rawValue) {
+        useScannedCode(rawValue);
+        return;
+      }
+    }
+  } catch (error) {
+    scannerStatus.textContent = "Olvasás folyamatban...";
+  }
+
+  requestAnimationFrame(scanLoop);
+}
+
+function useScannedCode(rawValue) {
+  const code = rawValue.trim();
+  searchInput.value = code;
+  stopScanner();
+  renderResult(
+    analyzedRows.filter((row) => row.cikkszam.toLowerCase() === code.toLowerCase()),
+    code
+  );
+  dataStatus.textContent = `Beolvasva: ${code}`;
+}
+
+function stopScanner() {
+  scannerActive = false;
+  if (scannerStream) {
+    scannerStream.getTracks().forEach((track) => track.stop());
+  }
+  scannerStream = null;
+  scannerVideo.srcObject = null;
+  scannerModal.hidden = true;
+}
+
+function showScannerMessage(message) {
+  scannerModal.hidden = false;
+  scannerStatus.textContent = message;
 }
 
 function renderResult(matchingRows, query) {
