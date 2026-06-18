@@ -315,6 +315,19 @@ h3 {
   gap: 16px;
   margin-top: 16px;
   padding: 18px;
+  flex-wrap: wrap;
+}
+
+.upload-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.import-notes {
+  flex-basis: 100%;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .panel-heading {
@@ -406,6 +419,11 @@ h3 {
   color: #fff;
   cursor: pointer;
   font-weight: 900;
+}
+
+.secondary-file {
+  border: 1px solid var(--line);
+  background: rgba(18, 29, 45, 0.84);
 }
 
 .file-button input {
@@ -636,6 +654,7 @@ h3 {
 }
 
 .issues-panel,
+.missing-panel,
 .table-panel {
   margin-top: 16px;
 }
@@ -741,6 +760,11 @@ tbody tr:hover {
   .panel-heading {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .upload-actions {
+    display: grid;
+    grid-template-columns: 1fr;
   }
 
   .file-button {

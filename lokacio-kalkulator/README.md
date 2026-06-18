@@ -89,7 +89,8 @@ Kötelező mezők:
 - nehéz anyag 2. vagy magasabb szinten: kritikus
 - nagy vagy XL láda 2. vagy magasabb szinten: figyelmeztetés
 - raklap 2. vagy magasabb szinten: kritikus
-- azonos cikkszám lokációinál az 1-2. szint kapacitását összeadja
+- azonos cikkszám lokációinál csak az 1-2. szint kapacitását adja össze kalkulációhoz
+- a 3-4. szint kapacitása csak tájékoztató jellegű
 - ha az alsó két szint kapacitása kisebb, mint a max készlet: figyelmeztetés
 - ha az alsó két szint kapacitása kisebb, mint a min készlet: kritikus
 
@@ -106,8 +107,34 @@ Figyelembe veszi:
 - súly_kategória: könnyű / közepes / nehéz
 - min / max készlet
 - alsó két szint kapacitása
+- 3-4. szint csak információként jelenik meg, nem számít bele a max kalkulációba
 
 Ez az első verzió még nem talál ki teljesen új üres lokációkat. A betöltött Excelben szereplő lokációkat rendezi és értékeli logikus sorrendbe.
+
+## SAP export jellegű fájl
+
+Az app felismeri ezeket az oszlopokat is:
+
+- `Raktárhely` -> lokáció
+- `Termék` -> cikkszám
+- `Termék rövid leírása` -> megnevezés
+- `Mennyiség` -> aktuális mennyiség
+
+Ez önmagában keresésre jó, de a teljes kalkulációhoz továbbra is kell a min, max, forgás, tároló, súly_kategória és kapacitás adat.
+
+## Két Exceles működés
+
+Az app két külön fájlt tud kezelni:
+
+1. `Napi export`
+   - SAP/export jellegű aktuális lista
+   - ebből jön a cikkszám, lokáció, megnevezés, mennyiség
+
+2. `Törzsadat`
+   - ritkán módosított adatbázis
+   - ebből jön a min, max, forgás, tároló, súly_kategória, kapacitás
+
+A program cikkszám alapján fűzi össze a két fájlt. Ha a napi exportban új cikkszám van, de a törzsadatban nincs meg hozzá minden szükséges adat, a `Hiányzó adatok` részben listázza, hogy mit kell még felvinni.
 
 ## Megjegyzés
 

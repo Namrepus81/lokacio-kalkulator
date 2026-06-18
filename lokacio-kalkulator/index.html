@@ -101,13 +101,22 @@
         <section class="upload-panel" aria-labelledby="uploadTitle">
           <div>
             <p class="eyebrow">Import</p>
-            <h2 id="uploadTitle">Excel vagy CSV feltöltés</h2>
-            <p class="muted">Kötelező oszlopok: cikkszám, lokáció, min, max, forgás, tároló, súly_kategória, kapacitás.</p>
+            <h2 id="uploadTitle">Napi export + törzsadat</h2>
+            <p class="muted">A napi exportból jön a cikkszám és lokáció. A törzsadat Excelből jön a min/max, forgás, tároló, súly és kapacitás.</p>
           </div>
-          <label class="file-button">
-            <input id="fileInput" type="file" accept=".xlsx,.xls,.csv">
-            Fájl kiválasztása
-          </label>
+          <div class="upload-actions">
+            <label class="file-button">
+              <input id="fileInput" type="file" accept=".xlsx,.xls,.csv">
+              Napi export
+            </label>
+            <label class="file-button secondary-file">
+              <input id="masterFileInput" type="file" accept=".xlsx,.xls,.csv">
+              Törzsadat
+            </label>
+          </div>
+          <div class="import-notes">
+            <span id="masterStatus">Nincs törzsadat betöltve</span>
+          </div>
         </section>
 
         <section class="content-grid">
@@ -146,6 +155,16 @@
             <input id="issueFilter" type="search" placeholder="Szűrés cikkszámra, lokációra...">
           </div>
           <div id="issuesList" class="issues-list">Nincs még adat.</div>
+        </section>
+
+        <section class="panel missing-panel" aria-labelledby="missingTitle">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Törzsadat kontroll</p>
+              <h2 id="missingTitle">Hiányzó adatok</h2>
+            </div>
+          </div>
+          <div id="missingMasterList" class="issues-list">Nincs még adat.</div>
         </section>
 
         <section class="panel table-panel" aria-labelledby="tableTitle">

@@ -1,6 +1,9 @@
-const REQUIRED_COLUMNS = [
+const SOURCE_REQUIRED_COLUMNS = [
   "cikkszam",
   "lokacio",
+];
+
+const MASTER_FIELDS = [
   "min",
   "max",
   "forgas",
@@ -86,8 +89,11 @@ const SAMPLE_ROWS = [
 
 let rows = [];
 let analyzedRows = [];
+let importRows = [];
+let masterRowsByItem = new Map();
 
 const fileInput = document.querySelector("#fileInput");
+const masterFileInput = document.querySelector("#masterFileInput");
 const searchForm = document.querySelector("#searchForm");
 const searchInput = document.querySelector("#searchInput");
 const resultBox = document.querySelector("#resultBox");
@@ -101,8 +107,11 @@ const dataTableBody = document.querySelector("#dataTableBody");
 const loadSampleButton = document.querySelector("#loadSampleButton");
 const logicButton = document.querySelector("#logicButton");
 const logicList = document.querySelector("#logicList");
+const masterStatus = document.querySelector("#masterStatus");
+const missingMasterList = document.querySelector("#missingMasterList");
 
 fileInput.addEventListener("change", handleFileChange);
+masterFileInput.addEventListener("change", handleMasterFileChange);
 searchForm.addEventListener("submit", handleSearch);
 issueFilter.addEventListener("input", renderIssues);
 loadSampleButton.addEventListener("click", () => setRows(SAMPLE_ROWS, "Minta adatok betöltve"));
@@ -111,7 +120,16 @@ logicButton.addEventListener("click", renderLogicalPlacement);
 function handleFileChange(event) {
   const file = event.target.files[0];
   if (!file) return;
+  readUploadedRows(file, (parsedRows) => setRows(parsedRows, file.name));
+}
 
+function handleMasterFileChange(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  readUploadedRows(file, (parsedRows) => setMasterRows(parsedRows, file.name));
+}
+
+function readUploadedRows(file, onRows) {
   const extension = file.name.split(".").pop().toLowerCase();
   const reader = new FileReader();
 
@@ -119,7 +137,7 @@ function handleFileChange(event) {
     try {
       if (extension === "csv") {
         const text = loadEvent.target.result;
-        setRows(parseCsv(text), file.name);
+        onRows(parseCsv(text));
         return;
       }
 
@@ -132,7 +150,7 @@ function handleFileChange(event) {
       const firstSheetName = workbook.SheetNames[0];
       const sheet = workbook.Sheets[firstSheetName];
       const parsedRows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
-      setRows(parsedRows, file.name);
+      onRows(parsedRows);
     } catch (error) {
       showImportError(`Nem sikerült beolvasni a fájlt: ${error.message}`);
     }
@@ -147,9 +165,10 @@ function handleFileChange(event) {
 
 function setRows(rawRows, sourceName) {
   const normalized = rawRows.map(normalizeRow).filter((row) => row.cikkszam);
-  const missingColumns = getMissingColumns(rawRows[0] || {});
+  const missingColumns = getMissingColumns(rawRows[0] || {}, SOURCE_REQUIRED_COLUMNS);
 
-  rows = normalized;
+  importRows = normalized;
+  rows = importRows.map(mergeMasterData);
   analyzedRows = rows.map((row) => ({
     ...row,
     analysis: analyzeRow(row),
@@ -162,6 +181,53 @@ function setRows(rawRows, sourceName) {
   renderAll();
 }
 
+function setMasterRows(rawRows, sourceName) {
+  const normalized = rawRows.map(normalizeRow).filter((row) => row.cikkszam);
+  masterRowsByItem = new Map();
+
+  normalized.forEach((row) => {
+    const existing = masterRowsByItem.get(row.cikkszam) || {};
+    masterRowsByItem.set(row.cikkszam, {
+      ...existing,
+      ...removeEmptyFields(row),
+    });
+  });
+
+  masterStatus.textContent = `${sourceName}: ${masterRowsByItem.size} cikkszám a törzsben`;
+
+  if (importRows.length) {
+    rows = importRows.map(mergeMasterData);
+    analyzedRows = rows.map((row) => ({
+      ...row,
+      analysis: analyzeRow(row),
+    }));
+    renderAll();
+  } else {
+    renderMissingMasterData();
+  }
+}
+
+function mergeMasterData(row) {
+  const master = masterRowsByItem.get(row.cikkszam);
+  if (!master) return row;
+
+  return {
+    ...row,
+    megnevezes: row.megnevezes || master.megnevezes || "",
+    min: row.min === "" ? master.min ?? "" : row.min,
+    max: row.max === "" ? master.max ?? "" : row.max,
+    forgas: row.forgas || master.forgas || "",
+    tarolo: row.tarolo || master.tarolo || "",
+    suly_kategoria: row.suly_kategoria || master.suly_kategoria || "",
+    kapacitas: row.kapacitas === "" ? master.kapacitas ?? "" : row.kapacitas,
+    megjegyzes: row.megjegyzes || master.megjegyzes || "",
+  };
+}
+
+function removeEmptyFields(row) {
+  return Object.fromEntries(Object.entries(row).filter(([, value]) => value !== ""));
+}
+
 function normalizeRow(row) {
   const normalized = {};
 
@@ -169,12 +235,12 @@ function normalizeRow(row) {
     normalized[normalizeKey(key)] = typeof value === "string" ? value.trim() : value;
   });
 
-  const lokacio = stringify(normalized.lokacio || normalized.location);
+  const lokacio = stringify(normalized.lokacio || normalized.location || normalized.raktarhely);
   const explicitLevel = toNumber(normalized.szint);
 
   return {
-    cikkszam: stringify(normalized.cikkszam),
-    megnevezes: stringify(normalized.megnevezes || normalized.nev || normalized.anyagnev),
+    cikkszam: stringify(normalized.cikkszam || normalized.termek || normalized.anyag || normalized.cikkszam_),
+    megnevezes: stringify(normalized.megnevezes || normalized.nev || normalized.anyagnev || normalized.termek_rovid_leirasa),
     lokacio,
     min: toNumber(normalized.min),
     max: toNumber(normalized.max),
@@ -183,6 +249,7 @@ function normalizeRow(row) {
     suly_kategoria: stringify(normalized.suly_kategoria || normalized.suly || normalized.nehezseg),
     szint: explicitLevel === "" ? getLocationLevel(lokacio) : explicitLevel,
     kapacitas: toNumber(normalized.kapacitas || normalized.also_ket_szint_kapacitas || normalized.befogadokepesseg),
+    mennyiseg: toNumber(normalized.mennyiseg || normalized.keszlet || normalized.aktualis_keszlet),
     megjegyzes: stringify(normalized.megjegyzes),
   };
 }
@@ -215,9 +282,9 @@ function toNumber(value) {
   return Number.isFinite(number) ? number : "";
 }
 
-function getMissingColumns(firstRow) {
+function getMissingColumns(firstRow, requiredColumns = SOURCE_REQUIRED_COLUMNS) {
   const available = Object.keys(firstRow).map(normalizeKey);
-  return REQUIRED_COLUMNS.filter((column) => !available.includes(column));
+  return requiredColumns.filter((column) => !available.includes(column));
 }
 
 function analyzeRow(row) {
@@ -336,9 +403,16 @@ function scorePlacement(row, itemRows) {
     }
   }
 
-  if (level === 1) score += 12;
-  if (level === 2) score += 5;
-  if (level >= 4) score -= 20;
+  if (level === 1) score += 18;
+  if (level === 2) score += 10;
+  if (level === 3) {
+    score -= 35;
+    reasons.push("3. szint csak tájékoztató tartalék");
+  }
+  if (level >= 4) {
+    score -= 55;
+    reasons.push("4. szint csak tájékoztató tartalék");
+  }
 
   if (item.max !== "" && row.kapacitas !== "") {
     const ratio = Number(row.kapacitas) / Number(item.max);
@@ -385,7 +459,7 @@ function renderResult(matchingRows, query) {
     <div class="detail-grid">
       <div><small>Min / Max</small><strong>${formatValue(item.min)} / ${formatValue(item.max)}</strong></div>
       <div><small>Alsó 2 szint kapacitás</small><strong>${formatValue(item.lowerCapacity)}</strong></div>
-      <div><small>Összes kapacitás</small><strong>${formatValue(item.totalCapacity)}</strong></div>
+      <div><small>3-4. szint tájékoztató</small><strong>${formatValue(item.infoCapacity)}</strong></div>
       <div><small>Forgás</small><strong>${escapeHtml(firstRow.forgas || "-")}</strong></div>
     </div>
     ${
@@ -422,7 +496,9 @@ function analyzeItem(itemRows) {
   const lowerCapacity = itemRows
     .filter((row) => Number(row.szint) <= 2)
     .reduce((sum, row) => sum + (Number(row.kapacitas) || 0), 0);
-  const totalCapacity = itemRows.reduce((sum, row) => sum + (Number(row.kapacitas) || 0), 0);
+  const infoCapacity = itemRows
+    .filter((row) => Number(row.szint) >= 3)
+    .reduce((sum, row) => sum + (Number(row.kapacitas) || 0), 0);
   const warnings = [];
   const errors = [];
 
@@ -440,13 +516,13 @@ function analyzeItem(itemRows) {
       warnings.push(`Az alsó két szint kapacitása (${lowerCapacity}) nem elég a maximum készlethez (${max}).`);
     }
 
-    if (max !== "" && totalCapacity < max) {
-      errors.push(`Az összes megadott lokáció kapacitása (${totalCapacity}) nem elég a maximum készlethez (${max}).`);
+    if (infoCapacity > 0) {
+      warnings.push(`A 3-4. szinten van még ${infoCapacity} kapacitás, de ez csak tájékoztató, nem számít bele a max kalkulációba.`);
     }
   }
 
   const severity = errors.length ? "error" : warnings.length ? "warning" : "ok";
-  return { min, max, lowerCapacity, totalCapacity, warnings, errors, severity };
+  return { min, max, lowerCapacity, infoCapacity, warnings, errors, severity };
 }
 
 function groupRowsByItem() {
@@ -508,7 +584,7 @@ function renderLogicalPlacement() {
           </div>
           <div class="logic-summary">
             <div><small>Alsó 2 szint</small><strong>${formatValue(recommendation.item.lowerCapacity)}</strong></div>
-            <div><small>Összes kapacitás</small><strong>${formatValue(recommendation.item.totalCapacity)}</strong></div>
+            <div><small>3-4. szint info</small><strong>${formatValue(recommendation.item.infoCapacity)}</strong></div>
             <div><small>Min / Max</small><strong>${formatValue(recommendation.item.min)} / ${formatValue(recommendation.item.max)}</strong></div>
           </div>
           ${
@@ -548,6 +624,58 @@ function renderAll() {
   renderIssues();
   renderTable();
   renderLogicalPlacement();
+  renderMissingMasterData();
+}
+
+function renderMissingMasterData() {
+  if (!importRows.length) {
+    missingMasterList.textContent = "Nincs még napi export betöltve.";
+    return;
+  }
+
+  const missingItems = buildMissingMasterItems();
+
+  if (!missingItems.length) {
+    missingMasterList.textContent = "Minden betöltött cikkszámhoz megvannak a szükséges törzsadatok.";
+    return;
+  }
+
+  missingMasterList.innerHTML = missingItems
+    .map(
+      (item) => `
+        <article class="issue-card warning">
+          <div>
+            <div class="issue-code">${escapeHtml(item.cikkszam)}</div>
+            <div class="issue-meta">${escapeHtml(item.megnevezes || "-")} | ${item.locations} lokáció</div>
+          </div>
+          <div>Hiányzik: ${item.missing.map(escapeHtml).join(", ")}</div>
+          ${renderBadge("warning")}
+        </article>
+      `
+    )
+    .join("");
+}
+
+function buildMissingMasterItems() {
+  const groups = new Map();
+
+  rows.forEach((row) => {
+    if (!groups.has(row.cikkszam)) groups.set(row.cikkszam, []);
+    groups.get(row.cikkszam).push(row);
+  });
+
+  return Array.from(groups.entries())
+    .map(([cikkszam, itemRows]) => {
+      const firstRow = itemRows[0];
+      const missing = MASTER_FIELDS.filter((field) => !itemRows.some((row) => row[field] !== ""));
+      return {
+        cikkszam,
+        megnevezes: firstRow.megnevezes,
+        locations: itemRows.length,
+        missing,
+      };
+    })
+    .filter((item) => item.missing.length);
 }
 
 function renderSummary() {
