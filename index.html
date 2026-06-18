@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="hu">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Raktár Asszisztens</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <main class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">RA</div>
+          <div>
+            <strong>Raktár Asszisztens</strong>
+            <span>Lokáció ajánló</span>
+          </div>
+        </div>
+
+        <nav class="side-nav" aria-label="Fő nézetek">
+          <a class="active" href="#searchTitle">Keresés</a>
+          <a href="#logicTitle">Javaslatok</a>
+          <a href="#issuesTitle">Figyelmeztetések</a>
+          <a href="#tableTitle">Adatok</a>
+        </nav>
+
+        <section class="side-card">
+          <p class="eyebrow">Raktár összegzés</p>
+          <div class="side-stat">
+            <span>Összes sor</span>
+            <strong id="itemCount">0</strong>
+          </div>
+          <div class="side-stat">
+            <span>Figyelmeztetés</span>
+            <strong id="warningCount">0</strong>
+          </div>
+          <div class="side-stat danger">
+            <span>Kritikus</span>
+            <strong id="errorCount">0</strong>
+          </div>
+        </section>
+
+        <div class="side-status" id="dataStatus">Nincs feltöltött adat</div>
+      </aside>
+
+      <section class="workspace">
+        <header class="topbar">
+          <button class="icon-button" type="button" aria-label="Menü">☰</button>
+          <div class="top-search">
+            <span>⌕</span>
+            <input form="searchForm" id="searchInput" type="search" inputmode="numeric" placeholder="Keresés cikkszámra..." autocomplete="off">
+          </div>
+          <div class="user-chip">
+            <span class="avatar">R</span>
+            <div>
+              <strong>RaktárUser</strong>
+              <small>Raktáros</small>
+            </div>
+          </div>
+        </header>
+
+        <section class="hero-grid">
+          <section class="panel search-panel" aria-labelledby="searchTitle">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Gyors keresés</p>
+                <h1 id="searchTitle">Cikkszám keresés</h1>
+              </div>
+              <button class="secondary-button" id="loadSampleButton" type="button">Minta betöltése</button>
+            </div>
+
+            <form id="searchForm" class="search-form">
+              <label for="searchInput">Cikkszám</label>
+              <div class="search-row">
+                <button type="submit">Keresés</button>
+              </div>
+            </form>
+
+            <p class="hint">Vonalkód olvasóval is használható, mert a beolvasott cikkszámot ugyanide írja.</p>
+          </section>
+
+          <section class="metric-card blue">
+            <p>Kiadási gyakoriság</p>
+            <strong>8 / nap</strong>
+            <span>Mintaérték</span>
+          </section>
+          <section class="metric-card green">
+            <p>Forgási sebesség</p>
+            <strong>2 400 db / hó</strong>
+            <span>Excelből később számolható</span>
+          </section>
+          <section class="metric-card purple">
+            <p>Prioritás</p>
+            <strong>A</strong>
+            <span>Szabály alapján</span>
+          </section>
+        </section>
+
+        <section class="upload-panel" aria-labelledby="uploadTitle">
+          <div>
+            <p class="eyebrow">Import</p>
+            <h2 id="uploadTitle">Excel vagy CSV feltöltés</h2>
+            <p class="muted">Kötelező oszlopok: cikkszám, lokáció, min, max, forgás, tároló, súly_kategória, kapacitás.</p>
+          </div>
+          <label class="file-button">
+            <input id="fileInput" type="file" accept=".xlsx,.xls,.csv">
+            Fájl kiválasztása
+          </label>
+        </section>
+
+        <section class="content-grid">
+          <section class="panel result-panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Anyag információ</p>
+                <h2>Találat</h2>
+              </div>
+            </div>
+            <div id="resultBox" class="result-box empty">
+              Tölts fel egy Excelt, majd írd be vagy szkenneld be a cikkszámot.
+            </div>
+          </section>
+
+          <section class="panel logic-panel" aria-labelledby="logicTitle">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Ajánlás</p>
+                <h2 id="logicTitle">Logikus elhelyezés</h2>
+              </div>
+              <button class="secondary-button" id="logicButton" type="button">Kalkulálás</button>
+            </div>
+            <div id="logicList" class="logic-list">
+              Tölts fel adatot vagy használd a mintát, majd indítsd a kalkulálást.
+            </div>
+          </section>
+        </section>
+
+        <section class="panel issues-panel" aria-labelledby="issuesTitle">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Kontroll</p>
+              <h2 id="issuesTitle">Figyelmeztetések</h2>
+            </div>
+            <input id="issueFilter" type="search" placeholder="Szűrés cikkszámra, lokációra...">
+          </div>
+          <div id="issuesList" class="issues-list">Nincs még adat.</div>
+        </section>
+
+        <section class="panel table-panel" aria-labelledby="tableTitle">
+          <p class="eyebrow">Betöltött törzs</p>
+          <h2 id="tableTitle">Adatok</h2>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Cikkszám</th>
+                  <th>Megnevezés</th>
+                  <th>Lokáció</th>
+                  <th>Min</th>
+                  <th>Max</th>
+                  <th>Forgás</th>
+                  <th>Tároló</th>
+                  <th>Súly</th>
+                  <th>Szint</th>
+                  <th>Kapacitás</th>
+                  <th>Állapot</th>
+                </tr>
+              </thead>
+              <tbody id="dataTableBody">
+                <tr>
+                  <td colspan="11">Nincs betöltött adat.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+    </main>
+  </body>
+</html>
