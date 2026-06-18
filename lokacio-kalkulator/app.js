@@ -114,10 +114,15 @@ const scannerModal = document.querySelector("#scannerModal");
 const scannerVideo = document.querySelector("#scannerVideo");
 const scannerStatus = document.querySelector("#scannerStatus");
 const closeScannerButton = document.querySelector("#closeScannerButton");
+const scanConfirm = document.querySelector("#scanConfirm");
+const scannedCodeText = document.querySelector("#scannedCodeText");
+const useScannedCodeButton = document.querySelector("#useScannedCodeButton");
+const retryScanButton = document.querySelector("#retryScanButton");
 
 let scannerStream = null;
 let scannerDetector = null;
 let scannerActive = false;
+let pendingScannedCode = "";
 
 fileInput.addEventListener("change", handleFileChange);
 masterFileInput.addEventListener("change", handleMasterFileChange);
@@ -127,6 +132,8 @@ loadSampleButton.addEventListener("click", () => setRows(SAMPLE_ROWS, "Minta ada
 logicButton.addEventListener("click", renderLogicalPlacement);
 scanButton.addEventListener("click", startScanner);
 closeScannerButton.addEventListener("click", stopScanner);
+useScannedCodeButton.addEventListener("click", confirmScannedCode);
+retryScanButton.addEventListener("click", retryScanner);
 
 function handleFileChange(event) {
   const file = event.target.files[0];
@@ -472,6 +479,8 @@ async function startScanner() {
   }
 
   scannerModal.hidden = false;
+  scanConfirm.hidden = true;
+  pendingScannedCode = "";
   scannerStatus.textContent = "Kamera indítása...";
 
   try {
@@ -518,6 +527,16 @@ async function scanLoop() {
 
 function useScannedCode(rawValue) {
   const code = rawValue.trim();
+  pendingScannedCode = code;
+  scannerActive = false;
+  scannedCodeText.textContent = code;
+  scanConfirm.hidden = false;
+  scannerStatus.textContent = "Ellenőrizd, hogy ez a cikkszám-e.";
+}
+
+function confirmScannedCode() {
+  if (!pendingScannedCode) return;
+  const code = pendingScannedCode;
   searchInput.value = code;
   stopScanner();
   renderResult(
@@ -527,8 +546,19 @@ function useScannedCode(rawValue) {
   dataStatus.textContent = `Beolvasva: ${code}`;
 }
 
+function retryScanner() {
+  pendingScannedCode = "";
+  scannedCodeText.textContent = "-";
+  scanConfirm.hidden = true;
+  scannerStatus.textContent = "Tartsd a jó vonalkódot a keretbe.";
+  scannerActive = true;
+  scanLoop();
+}
+
 function stopScanner() {
   scannerActive = false;
+  pendingScannedCode = "";
+  scanConfirm.hidden = true;
   if (scannerStream) {
     scannerStream.getTracks().forEach((track) => track.stop());
   }

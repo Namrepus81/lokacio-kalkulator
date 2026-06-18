@@ -722,6 +722,35 @@ h3 {
   line-height: 1.4;
 }
 
+.scan-confirm {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 10px;
+  align-items: center;
+  margin-top: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: rgba(4, 10, 19, 0.55);
+}
+
+.scan-confirm[hidden] {
+  display: none;
+}
+
+.scan-confirm small {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.scan-confirm strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 20px;
+  word-break: break-word;
+}
+
 .issues-panel,
 .missing-panel,
 .table-panel {
@@ -818,6 +847,10 @@ tbody tr:hover {
   .scan-button {
     grid-column: 1 / -1;
     width: 100%;
+  }
+
+  .scan-confirm {
+    grid-template-columns: 1fr;
   }
 
   .hero-grid,
