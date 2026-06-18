@@ -99,11 +99,14 @@ const issuesList = document.querySelector("#issuesList");
 const issueFilter = document.querySelector("#issueFilter");
 const dataTableBody = document.querySelector("#dataTableBody");
 const loadSampleButton = document.querySelector("#loadSampleButton");
+const logicButton = document.querySelector("#logicButton");
+const logicList = document.querySelector("#logicList");
 
 fileInput.addEventListener("change", handleFileChange);
 searchForm.addEventListener("submit", handleSearch);
 issueFilter.addEventListener("input", renderIssues);
 loadSampleButton.addEventListener("click", () => setRows(SAMPLE_ROWS, "Minta adatok betöltve"));
+logicButton.addEventListener("click", renderLogicalPlacement);
 
 function handleFileChange(event) {
   const file = event.target.files[0];
@@ -277,6 +280,80 @@ function getLocationLevel(location) {
   return level === "" ? "" : level;
 }
 
+function scorePlacement(row, itemRows) {
+  const forgas = normalizeText(row.forgas);
+  const tarolo = normalizeText(row.tarolo);
+  const suly = normalizeText(row.suly_kategoria);
+  const zone = row.analysis.locationZone;
+  const level = Number(row.szint);
+  const item = analyzeItem(itemRows);
+  let score = 0;
+  const reasons = [];
+
+  if (forgas.includes("suru")) {
+    if (zone === "elol") {
+      score += 45;
+      reasons.push("sűrű anyag elöl van");
+    } else if (zone === "kozep") {
+      score += 15;
+      reasons.push("sűrű anyag közép zónában van");
+    } else if (zone === "hatul") {
+      score -= 45;
+      reasons.push("sűrű anyag hátul van");
+    }
+  }
+
+  if (forgas.includes("lassu")) {
+    if (zone === "hatul") {
+      score += 30;
+      reasons.push("lassú anyag hátrébb lehet");
+    } else if (zone === "elol") {
+      score -= 25;
+      reasons.push("lassú anyag jó helyet foglal elöl");
+    }
+  }
+
+  if (suly.includes("nehez")) {
+    if (level === 1) {
+      score += 55;
+      reasons.push("nehéz anyag alsó szinten van");
+    } else if (level >= 2) {
+      score -= level >= 3 ? 90 : 60;
+      reasons.push("nehéz anyag magas szinten van");
+    }
+  }
+
+  if (tarolo.includes("xl") || tarolo.includes("nagy") || tarolo.includes("raklap")) {
+    if (level === 1) {
+      score += 35;
+      reasons.push("nagy tároló alsó szinten van");
+    } else if (level >= 3) {
+      score -= 60;
+      reasons.push("nagy tároló túl magasan van");
+    } else if (level === 2) {
+      score -= 15;
+      reasons.push("nagy tároló második szinten figyelendő");
+    }
+  }
+
+  if (level === 1) score += 12;
+  if (level === 2) score += 5;
+  if (level >= 4) score -= 20;
+
+  if (item.max !== "" && row.kapacitas !== "") {
+    const ratio = Number(row.kapacitas) / Number(item.max);
+    if (ratio >= 0.35 && ratio <= 0.8) {
+      score += 15;
+      reasons.push("kapacitása hasznos arányban van a maxhoz");
+    } else if (ratio > 1.5) {
+      score -= 15;
+      reasons.push("túl nagy helyet foglalhat a max készlethez képest");
+    }
+  }
+
+  return { score, reasons };
+}
+
 function handleSearch(event) {
   event.preventDefault();
   const query = searchInput.value.trim().toLowerCase();
@@ -372,10 +449,105 @@ function analyzeItem(itemRows) {
   return { min, max, lowerCapacity, totalCapacity, warnings, errors, severity };
 }
 
+function groupRowsByItem() {
+  const groups = new Map();
+  analyzedRows.forEach((row) => {
+    if (!groups.has(row.cikkszam)) groups.set(row.cikkszam, []);
+    groups.get(row.cikkszam).push(row);
+  });
+  return Array.from(groups.values());
+}
+
+function buildPlacementRecommendations() {
+  return groupRowsByItem()
+    .map((itemRows) => {
+      const item = analyzeItem(itemRows);
+      const scoredRows = itemRows
+        .map((row) => ({
+          ...row,
+          placement: scorePlacement(row, itemRows),
+        }))
+        .sort((a, b) => b.placement.score - a.placement.score);
+
+      return {
+        cikkszam: itemRows[0].cikkszam,
+        megnevezes: itemRows[0].megnevezes,
+        item,
+        bestRows: scoredRows.slice(0, 3),
+        score: scoredRows.reduce((sum, row) => sum + row.placement.score, 0),
+      };
+    })
+    .sort((a, b) => {
+      if (a.item.severity === "error" && b.item.severity !== "error") return -1;
+      if (a.item.severity !== "error" && b.item.severity === "error") return 1;
+      if (a.item.severity === "warning" && b.item.severity === "ok") return -1;
+      if (a.item.severity === "ok" && b.item.severity === "warning") return 1;
+      return b.score - a.score;
+    });
+}
+
+function renderLogicalPlacement() {
+  if (!analyzedRows.length) {
+    logicList.textContent = "Nincs még adat.";
+    return;
+  }
+
+  const recommendations = buildPlacementRecommendations();
+
+  logicList.innerHTML = recommendations
+    .map((recommendation) => {
+      const messages = [...recommendation.item.errors, ...recommendation.item.warnings];
+      return `
+        <article class="logic-card ${recommendation.item.severity}">
+          <div class="logic-head">
+            <div>
+              <strong>${escapeHtml(recommendation.cikkszam)}</strong>
+              <small>${escapeHtml(recommendation.megnevezes || "-")}</small>
+            </div>
+            ${renderBadge(recommendation.item.severity)}
+          </div>
+          <div class="logic-summary">
+            <div><small>Alsó 2 szint</small><strong>${formatValue(recommendation.item.lowerCapacity)}</strong></div>
+            <div><small>Összes kapacitás</small><strong>${formatValue(recommendation.item.totalCapacity)}</strong></div>
+            <div><small>Min / Max</small><strong>${formatValue(recommendation.item.min)} / ${formatValue(recommendation.item.max)}</strong></div>
+          </div>
+          ${
+            messages.length
+              ? `<ul class="warning-list">${messages.slice(0, 4).map((message) => `<li>${escapeHtml(message)}</li>`).join("")}</ul>`
+              : "<p>Jelenlegi adatok alapján rendben.</p>"
+          }
+          <div class="logic-recommendation">
+            <h3>Javasolt sorrend</h3>
+            ${recommendation.bestRows
+              .map(
+                (row) => `
+                  <div class="logic-row">
+                    <strong>${escapeHtml(row.lokacio)}</strong>
+                    <span>${escapeHtml(row.analysis.locationZone)} | szint ${formatValue(row.szint)} | kap. ${formatValue(row.kapacitas)}</span>
+                    <em>${row.placement.score} pont</em>
+                  </div>
+                `
+              )
+              .join("")}
+          </div>
+          <p class="logic-note">${escapeHtml(getBestReason(recommendation.bestRows))}</p>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function getBestReason(rowsForItem) {
+  const reasons = rowsForItem.flatMap((row) => row.placement.reasons);
+  if (!reasons.length) return "Nincs külön indok, az adatok alapján semleges elhelyezés.";
+  return `Fő indok: ${reasons[0]}.`;
+}
+
 function renderAll() {
   renderSummary();
   renderIssues();
   renderTable();
+  renderLogicalPlacement();
 }
 
 function renderSummary() {

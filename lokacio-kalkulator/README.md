@@ -93,6 +93,22 @@ Kötelező mezők:
 - ha az alsó két szint kapacitása kisebb, mint a max készlet: figyelmeztetés
 - ha az alsó két szint kapacitása kisebb, mint a min készlet: kritikus
 
+## Logikus elhelyezés
+
+A `Logikus elhelyezés` rész cikkszámonként pontozza a meglévő lokációkat.
+
+Figyelembe veszi:
+
+- forgás: sűrű / közepes / lassú
+- zóna: elöl / közép / hátul
+- szint: a lokáció utolsó száma alapján
+- tároló: kis KLT / nagy KLT / XL láda / raklap
+- súly_kategória: könnyű / közepes / nehéz
+- min / max készlet
+- alsó két szint kapacitása
+
+Ez az első verzió még nem talál ki teljesen új üres lokációkat. A betöltött Excelben szereplő lokációkat rendezi és értékeli logikus sorrendbe.
+
 ## Megjegyzés
 
 Az `.xlsx` olvasáshoz a SheetJS könyvtárat CDN-ről tölti be a böngésző. Ha nincs internet, a CSV feltöltés akkor is működik.
