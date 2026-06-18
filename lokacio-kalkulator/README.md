@@ -1,0 +1,98 @@
+# Lokáció Kalkulátor
+
+Egyszerű, SAP-tól független, böngészőben futó alapverzió.
+
+## Indítás
+
+Dupla kattintás:
+
+`D:\Web\Projektek\lokacio-kalkulator\start.bat`
+
+Vagy nyisd meg ezt a fájlt böngészőben:
+
+`D:\Web\Projektek\lokacio-kalkulator\index.html`
+
+Excel sablon:
+
+`D:\Web\Projektek\lokacio-kalkulator\lokacio-kalkulator-sablon.xlsx`
+
+## Excel oszlopok
+
+Az első sor legyen fejléc. Ezeket az oszlopokat várja:
+
+- `cikkszám`
+- `megnevezés`
+- `lokáció`
+- `min`
+- `max`
+- `forgás`
+- `tároló`
+- `súly_kategória`
+- `kapacitás`
+- `megjegyzés`
+
+Kötelező mezők:
+
+- `cikkszám`
+- `lokáció`
+- `min`
+- `max`
+- `forgás`
+- `tároló`
+- `súly_kategória`
+- `kapacitás`
+
+Ékezet nélküli fejléceket is elfogad, például `cikkszam`, `lokacio`, `tarolo`, de a javasolt forma az ékezetes. A felületen a betöltött értékeket ékezetesen írja ki.
+
+## Érték minták
+
+`forgás`:
+
+- `sűrű`
+- `közepes`
+- `lassú`
+
+`tároló`:
+
+- `kis KLT`
+- `nagy KLT`
+- `XL láda`
+- `raklap`
+
+`súly_kategória`:
+
+- `könnyű`
+- `közepes`
+- `nehéz`
+
+`lokáció`:
+
+- forma: `A-A-1-1`, `A-A-1-2`, `C-A-1-1`, `B-A-1-1`
+- az utolsó szám a szint
+- `A-A-1-1` = 1. szint
+- `A-A-1-2` = 2. szint
+- `A-A-1-3` = 3. szint
+- `A-A-1-4` = 4. szint, ez a maximum
+
+`kapacitás`:
+
+- szám, például `2000`
+- azt jelenti, hogy az adott lokációban/szinten mennyi fér el abból a cikkszámból
+
+## Jelenlegi szabályok
+
+- A/B lokáció: elöl
+- C/D lokáció: közép
+- E/F/G/H lokáció: hátul
+- sűrű anyag hátul: figyelmeztetés
+- lassú anyag elöl: figyelmeztetés
+- nehéz anyag 2. vagy magasabb szinten: kritikus
+- nagy vagy XL láda 2. vagy magasabb szinten: figyelmeztetés
+- raklap 2. vagy magasabb szinten: kritikus
+- azonos cikkszám lokációinál az 1-2. szint kapacitását összeadja
+- ha az alsó két szint kapacitása kisebb, mint a max készlet: figyelmeztetés
+- ha az alsó két szint kapacitása kisebb, mint a min készlet: kritikus
+
+## Megjegyzés
+
+Az `.xlsx` olvasáshoz a SheetJS könyvtárat CDN-ről tölti be a böngésző. Ha nincs internet, a CSV feltöltés akkor is működik.

@@ -1,0 +1,7 @@
+cikkszám;megnevezés;lokáció;min;max;forgás;tároló;súly_kategória;kapacitás;megjegyzés
+1013818;Minta csavar;A-A-1-1;500;3000;sűrű;kis KLT;könnyű;1200;jó helyen van
+1013818;Minta csavar;A-A-1-2;500;3000;sűrű;kis KLT;könnyű;800;második alsó szint
+1013818;Minta csavar;A-A-1-3;500;3000;sűrű;kis KLT;könnyű;1500;felső tartalékhely
+1022455;Minta fedél;C-A-1-2;1000;6000;sűrű;XL láda;nehéz;2000;sűrű és nehéz anyag rossz helyen
+1088891;Minta konzol;B-A-1-1;200;1500;lassú;nagy KLT;közepes;1800;lassú anyag elöl
+1099911;Hiányos adat;B-A-1-4;;2200;közepes;raklap;nehéz;1200;hiányzó minimum

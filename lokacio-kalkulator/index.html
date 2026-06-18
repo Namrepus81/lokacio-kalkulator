@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="hu">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Lokáció Kalkulátor</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Excel alapú raktár segéd</p>
+          <h1>Lokáció Kalkulátor</h1>
+        </div>
+        <div class="status-pill" id="dataStatus">Nincs feltöltött adat</div>
+      </header>
+
+      <section class="upload-panel" aria-labelledby="uploadTitle">
+        <div>
+          <p class="eyebrow">1. lépés</p>
+          <h2 id="uploadTitle">Excel vagy CSV feltöltés</h2>
+          <p class="muted">
+            Kötelező oszlopok: cikkszám, lokáció, min, max, forgás, tároló, súly_kategória, kapacitás.
+          </p>
+        </div>
+        <label class="file-button">
+          <input id="fileInput" type="file" accept=".xlsx,.xls,.csv">
+          Fájl kiválasztása
+        </label>
+      </section>
+
+      <section class="grid-layout">
+        <section class="panel search-panel" aria-labelledby="searchTitle">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">2. lépés</p>
+              <h2 id="searchTitle">Cikkszám keresés</h2>
+            </div>
+            <button class="secondary-button" id="loadSampleButton" type="button">Minta betöltése</button>
+          </div>
+
+          <form id="searchForm" class="search-form">
+            <label for="searchInput">Cikkszám</label>
+            <div class="search-row">
+              <input id="searchInput" type="search" inputmode="numeric" placeholder="pl. 1013818" autocomplete="off">
+              <button type="submit">Keresés</button>
+            </div>
+          </form>
+
+          <div id="resultBox" class="result-box empty">
+            Tölts fel egy Excelt, majd írd be vagy szkenneld be a cikkszámot.
+          </div>
+        </section>
+
+        <section class="panel summary-panel" aria-labelledby="summaryTitle">
+          <p class="eyebrow">Állapot</p>
+          <h2 id="summaryTitle">Összesítés</h2>
+          <div class="summary-grid">
+            <div>
+              <span id="itemCount">0</span>
+              <small>anyag</small>
+            </div>
+            <div>
+              <span id="warningCount">0</span>
+              <small>figyelmeztetés</small>
+            </div>
+            <div>
+              <span id="errorCount">0</span>
+              <small>kritikus gond</small>
+            </div>
+          </div>
+        </section>
+      </section>
+
+      <section class="panel issues-panel" aria-labelledby="issuesTitle">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">3. lépés</p>
+            <h2 id="issuesTitle">Problémalista</h2>
+          </div>
+          <input id="issueFilter" type="search" placeholder="Szűrés cikkszámra, lokációra...">
+        </div>
+        <div id="issuesList" class="issues-list">
+          Nincs még adat.
+        </div>
+      </section>
+
+      <section class="panel table-panel" aria-labelledby="tableTitle">
+        <p class="eyebrow">Betöltött törzs</p>
+        <h2 id="tableTitle">Adatok</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Cikkszám</th>
+                <th>Megnevezés</th>
+                <th>Lokáció</th>
+                <th>Min</th>
+                <th>Max</th>
+                <th>Forgás</th>
+                <th>Tároló</th>
+                <th>Súly</th>
+                <th>Szint</th>
+                <th>Kapacitás</th>
+                <th>Állapot</th>
+              </tr>
+            </thead>
+            <tbody id="dataTableBody">
+              <tr>
+                <td colspan="11">Nincs betöltött adat.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>
