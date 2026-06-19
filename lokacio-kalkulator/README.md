@@ -90,6 +90,8 @@ Kötelező mezők:
 - nagy vagy XL láda 2. vagy magasabb szinten: figyelmeztetés
 - raklap 2. vagy magasabb szinten: kritikus
 - azonos cikkszám lokációinál csak az 1-2. szint kapacitását adja össze kalkulációhoz
+- kalkulációba csak ezek a lokációkezdetek számítanak: `A-A`, `A-B`, `A-C`, `A-D`
+- `A-E`, `B-A`, `C-A`, `C-B` és minden más lokáció csak tájékoztató
 - a 3-4. szint kapacitása csak tájékoztató jellegű
 - ha az alsó két szint kapacitása kisebb, mint a max készlet: figyelmeztetés
 - ha az alsó két szint kapacitása kisebb, mint a min készlet: kritikus
@@ -107,7 +109,8 @@ Figyelembe veszi:
 - súly_kategória: könnyű / közepes / nehéz
 - min / max készlet
 - alsó két szint kapacitása
-- 3-4. szint csak információként jelenik meg, nem számít bele a max kalkulációba
+- csak `A-A`, `A-B`, `A-C`, `A-D` lokációkat javasol
+- a többi lokáció és a 3-4. szint csak információként jelenik meg, nem számít bele a max kalkulációba
 
 Ez az első verzió még nem talál ki teljesen új üres lokációkat. A betöltött Excelben szereplő lokációkat rendezi és értékeli logikus sorrendbe.
 

@@ -377,7 +377,21 @@ function getLocationLevel(location) {
   return level === "" ? "" : level;
 }
 
+function getLocationPrefix(location) {
+  const parts = stringify(location).split("-").map((part) => part.trim().toUpperCase()).filter(Boolean);
+  if (parts.length < 2) return "";
+  return `${parts[0]}-${parts[1]}`;
+}
+
+function isCalculationLocation(location) {
+  return ["A-A", "A-B", "A-C", "A-D"].includes(getLocationPrefix(location));
+}
+
 function scorePlacement(row, itemRows) {
+  if (!isCalculationLocation(row.lokacio)) {
+    return { score: -999, reasons: ["nem kalkulációs lokáció, csak tájékoztató"] };
+  }
+
   const forgas = normalizeText(row.forgas);
   const tarolo = normalizeText(row.tarolo);
   const suly = normalizeText(row.suly_kategoria);
@@ -594,7 +608,7 @@ function renderResult(matchingRows, query) {
     <div class="detail-grid">
       <div><small>Min / Max</small><strong>${formatValue(item.min)} / ${formatValue(item.max)}</strong></div>
       <div><small>Alsó 2 szint kapacitás</small><strong>${formatValue(item.lowerCapacity)}</strong></div>
-      <div><small>3-4. szint tájékoztató</small><strong>${formatValue(item.infoCapacity)}</strong></div>
+      <div><small>Info kapacitás</small><strong>${formatValue(item.infoCapacity)}</strong></div>
       <div><small>Forgás</small><strong>${escapeHtml(firstRow.forgas || "-")}</strong></div>
     </div>
     ${
@@ -629,10 +643,10 @@ function analyzeItem(itemRows) {
   const min = minValues.length ? Math.max(...minValues) : "";
   const max = maxValues.length ? Math.max(...maxValues) : "";
   const lowerCapacity = itemRows
-    .filter((row) => Number(row.szint) <= 2)
+    .filter((row) => isCalculationLocation(row.lokacio) && Number(row.szint) <= 2)
     .reduce((sum, row) => sum + (Number(row.kapacitas) || 0), 0);
   const infoCapacity = itemRows
-    .filter((row) => Number(row.szint) >= 3)
+    .filter((row) => !isCalculationLocation(row.lokacio) || Number(row.szint) >= 3)
     .reduce((sum, row) => sum + (Number(row.kapacitas) || 0), 0);
   const warnings = [];
   const errors = [];
@@ -652,7 +666,7 @@ function analyzeItem(itemRows) {
     }
 
     if (infoCapacity > 0) {
-      warnings.push(`A 3-4. szinten van még ${infoCapacity} kapacitás, de ez csak tájékoztató, nem számít bele a max kalkulációba.`);
+      warnings.push(`A nem kalkulációs vagy 3-4. szinten van még ${infoCapacity} kapacitás, de ez csak tájékoztató.`);
     }
   }
 
@@ -673,7 +687,8 @@ function buildPlacementRecommendations() {
   return groupRowsByItem()
     .map((itemRows) => {
       const item = analyzeItem(itemRows);
-      const scoredRows = itemRows
+      const calculationRows = itemRows.filter((row) => isCalculationLocation(row.lokacio));
+      const scoredRows = calculationRows
         .map((row) => ({
           ...row,
           placement: scorePlacement(row, itemRows),
@@ -685,6 +700,7 @@ function buildPlacementRecommendations() {
         megnevezes: itemRows[0].megnevezes,
         item,
         bestRows: scoredRows.slice(0, 3),
+        hasCalculationRows: calculationRows.length > 0,
         score: scoredRows.reduce((sum, row) => sum + row.placement.score, 0),
       };
     })
@@ -719,7 +735,7 @@ function renderLogicalPlacement() {
           </div>
           <div class="logic-summary">
             <div><small>Alsó 2 szint</small><strong>${formatValue(recommendation.item.lowerCapacity)}</strong></div>
-            <div><small>3-4. szint info</small><strong>${formatValue(recommendation.item.infoCapacity)}</strong></div>
+            <div><small>Info kapacitás</small><strong>${formatValue(recommendation.item.infoCapacity)}</strong></div>
             <div><small>Min / Max</small><strong>${formatValue(recommendation.item.min)} / ${formatValue(recommendation.item.max)}</strong></div>
           </div>
           ${
@@ -729,17 +745,21 @@ function renderLogicalPlacement() {
           }
           <div class="logic-recommendation">
             <h3>Javasolt sorrend</h3>
-            ${recommendation.bestRows
-              .map(
-                (row) => `
-                  <div class="logic-row">
-                    <strong>${escapeHtml(row.lokacio)}</strong>
-                    <span>${escapeHtml(row.analysis.locationZone)} | szint ${formatValue(row.szint)} | kap. ${formatValue(row.kapacitas)}</span>
-                    <em>${row.placement.score} pont</em>
-                  </div>
-                `
-              )
-              .join("")}
+            ${
+              recommendation.hasCalculationRows
+                ? recommendation.bestRows
+                    .map(
+                      (row) => `
+                        <div class="logic-row">
+                          <strong>${escapeHtml(row.lokacio)}</strong>
+                          <span>${escapeHtml(row.analysis.locationZone)} | szint ${formatValue(row.szint)} | kap. ${formatValue(row.kapacitas)}</span>
+                          <em>${row.placement.score} pont</em>
+                        </div>
+                      `
+                    )
+                    .join("")
+                : `<p class="logic-note">Ehhez a cikkszámhoz nincs A-A, A-B, A-C vagy A-D lokáció.</p>`
+            }
           </div>
           <p class="logic-note">${escapeHtml(getBestReason(recommendation.bestRows))}</p>
         </article>
