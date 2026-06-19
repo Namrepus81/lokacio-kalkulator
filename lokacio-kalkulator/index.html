@@ -50,7 +50,7 @@
           <button class="icon-button" type="button" aria-label="Menü">☰</button>
           <div class="top-search">
             <span>⌕</span>
-            <input form="searchForm" id="searchInput" type="search" inputmode="numeric" placeholder="Keresés cikkszámra..." autocomplete="off">
+            <input form="searchForm" id="topSearchInput" type="search" inputmode="numeric" placeholder="Keresés cikkszámra..." autocomplete="off">
           </div>
           <button class="scan-button" id="scanButton" type="button">Kamera scan</button>
           <div class="user-chip">
@@ -75,6 +75,7 @@
             <form id="searchForm" class="search-form">
               <label for="searchInput">Cikkszám</label>
               <div class="search-row">
+                <input id="searchInput" type="search" inputmode="text" placeholder="pl. 1013818 vagy BH0-0820-BK-500" autocomplete="off">
                 <button type="submit">Keresés</button>
               </div>
             </form>

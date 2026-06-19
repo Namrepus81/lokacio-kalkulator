@@ -96,6 +96,7 @@ const fileInput = document.querySelector("#fileInput");
 const masterFileInput = document.querySelector("#masterFileInput");
 const searchForm = document.querySelector("#searchForm");
 const searchInput = document.querySelector("#searchInput");
+const topSearchInput = document.querySelector("#topSearchInput");
 const resultBox = document.querySelector("#resultBox");
 const dataStatus = document.querySelector("#dataStatus");
 const itemCount = document.querySelector("#itemCount");
@@ -127,6 +128,12 @@ let pendingScannedCode = "";
 fileInput.addEventListener("change", handleFileChange);
 masterFileInput.addEventListener("change", handleMasterFileChange);
 searchForm.addEventListener("submit", handleSearch);
+topSearchInput.addEventListener("input", () => {
+  searchInput.value = topSearchInput.value;
+});
+searchInput.addEventListener("input", () => {
+  topSearchInput.value = searchInput.value;
+});
 issueFilter.addEventListener("input", renderIssues);
 loadSampleButton.addEventListener("click", () => setRows(SAMPLE_ROWS, "Minta adatok betöltve"));
 logicButton.addEventListener("click", renderLogicalPlacement);
