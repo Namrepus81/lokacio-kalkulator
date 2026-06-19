@@ -97,6 +97,9 @@ const masterFileInput = document.querySelector("#masterFileInput");
 const searchForm = document.querySelector("#searchForm");
 const searchInput = document.querySelector("#searchInput");
 const topSearchInput = document.querySelector("#topSearchInput");
+const itemSearchMode = document.querySelector("#itemSearchMode");
+const locationSearchMode = document.querySelector("#locationSearchMode");
+const searchTitle = document.querySelector("#searchTitle");
 const resultBox = document.querySelector("#resultBox");
 const dataStatus = document.querySelector("#dataStatus");
 const itemCount = document.querySelector("#itemCount");
@@ -124,6 +127,7 @@ let scannerStream = null;
 let scannerDetector = null;
 let scannerActive = false;
 let pendingScannedCode = "";
+let searchMode = "item";
 
 fileInput.addEventListener("change", handleFileChange);
 masterFileInput.addEventListener("change", handleMasterFileChange);
@@ -134,6 +138,8 @@ topSearchInput.addEventListener("input", () => {
 searchInput.addEventListener("input", () => {
   topSearchInput.value = searchInput.value;
 });
+itemSearchMode.addEventListener("click", () => setSearchMode("item"));
+locationSearchMode.addEventListener("click", () => setSearchMode("location"));
 issueFilter.addEventListener("input", renderIssues);
 loadSampleButton.addEventListener("click", () => setRows(SAMPLE_ROWS, "Minta adatok betöltve"));
 logicButton.addEventListener("click", renderLogicalPlacement);
@@ -481,11 +487,37 @@ function scorePlacement(row, itemRows) {
 
 function handleSearch(event) {
   event.preventDefault();
-  const query = searchInput.value.trim().toLowerCase();
+  runSearch(searchInput.value);
+}
+
+function setSearchMode(mode) {
+  searchMode = mode;
+  const isLocation = mode === "location";
+  itemSearchMode.classList.toggle("active", !isLocation);
+  locationSearchMode.classList.toggle("active", isLocation);
+  searchTitle.textContent = isLocation ? "Tárhely keresés" : "Cikkszám keresés";
+  searchInput.placeholder = isLocation ? "pl. A-A-1-1" : "pl. 1013818 vagy BH0-0820-BK-500";
+  topSearchInput.placeholder = isLocation ? "Keresés tárhelyre..." : "Keresés cikkszámra...";
+}
+
+function runSearch(value) {
+  const query = value.trim();
   if (!query) return;
 
-  const foundRows = analyzedRows.filter((row) => row.cikkszam.toLowerCase() === query);
+  if (searchMode === "location") {
+    const normalizedQuery = normalizeLocationQuery(query);
+    const foundRows = analyzedRows.filter((row) => normalizeLocationQuery(row.lokacio).includes(normalizedQuery));
+    renderLocationResult(foundRows, query);
+    return;
+  }
+
+  const normalizedQuery = query.toLowerCase();
+  const foundRows = analyzedRows.filter((row) => row.cikkszam.toLowerCase() === normalizedQuery);
   renderResult(foundRows, query);
+}
+
+function normalizeLocationQuery(value) {
+  return stringify(value).toUpperCase().replace(/\s+/g, "");
 }
 
 async function startScanner() {
@@ -559,11 +591,9 @@ function confirmScannedCode() {
   if (!pendingScannedCode) return;
   const code = pendingScannedCode;
   searchInput.value = code;
+  topSearchInput.value = code;
   stopScanner();
-  renderResult(
-    analyzedRows.filter((row) => row.cikkszam.toLowerCase() === code.toLowerCase()),
-    code
-  );
+  runSearch(code);
   dataStatus.textContent = `Beolvasva: ${code}`;
 }
 
@@ -639,6 +669,58 @@ function renderResult(matchingRows, query) {
             </article>
           `
         )
+        .join("")}
+    </div>
+  `;
+}
+
+function renderLocationResult(matchingRows, query) {
+  if (!matchingRows.length) {
+    resultBox.className = "result-box";
+    resultBox.innerHTML = `<strong>Nincs találat erre a tárhelyre:</strong> ${escapeHtml(query)}`;
+    return;
+  }
+
+  const exactRows = matchingRows.filter((row) => normalizeLocationQuery(row.lokacio) === normalizeLocationQuery(query));
+  const rowsToShow = exactRows.length ? exactRows : matchingRows;
+  const locationName = exactRows.length ? exactRows[0].lokacio : query;
+  const errorCountForLocation = rowsToShow.filter((row) => row.analysis.severity === "error").length;
+  const warningCountForLocation = rowsToShow.filter((row) => row.analysis.severity === "warning").length;
+  const totalQuantity = rowsToShow.reduce((sum, row) => sum + (Number(row.mennyiseg) || 0), 0);
+
+  resultBox.className = "result-box";
+  resultBox.innerHTML = `
+    <div class="result-title">
+      <div>
+        <strong>${escapeHtml(locationName)}</strong>
+        <div class="issue-meta">${rowsToShow.length} sor ezen a tárhelyen</div>
+      </div>
+      ${renderBadge(errorCountForLocation ? "error" : warningCountForLocation ? "warning" : "ok")}
+    </div>
+    <div class="detail-grid">
+      <div><small>Anyagsor</small><strong>${rowsToShow.length}</strong></div>
+      <div><small>Össz. mennyiség</small><strong>${formatValue(totalQuantity || "")}</strong></div>
+      <div><small>Figyelendő</small><strong>${warningCountForLocation}</strong></div>
+      <div><small>Kritikus</small><strong>${errorCountForLocation}</strong></div>
+    </div>
+    <div class="location-list">
+      ${rowsToShow
+        .map((row) => {
+          const messages = [...row.analysis.errors, ...row.analysis.warnings];
+          return `
+            <article class="location-card ${row.analysis.severity}">
+              <div>
+                <strong>${escapeHtml(row.cikkszam || "-")}</strong>
+                <small>${escapeHtml(row.megnevezes || "Nincs megnevezés")}</small>
+              </div>
+              <div><small>Mennyiség</small><strong>${formatValue(row.mennyiseg)}</strong></div>
+              <div><small>Min / Max</small><strong>${formatValue(row.min)} / ${formatValue(row.max)}</strong></div>
+              <div><small>Tároló</small><strong>${escapeHtml(row.tarolo || "-")}</strong></div>
+              ${renderBadge(row.analysis.severity)}
+              ${messages.length ? `<div class="location-message">${messages.map(escapeHtml).join("<br>")}</div>` : ""}
+            </article>
+          `;
+        })
         .join("")}
     </div>
   `;
