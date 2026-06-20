@@ -6,6 +6,7 @@
     <title>Raktár Asszisztens</title>
     <link rel="stylesheet" href="styles.css">
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js" defer></script>
     <script src="app.js" defer></script>
   </head>
   <body>
@@ -21,6 +22,7 @@
 
         <nav class="side-nav" aria-label="Fő nézetek">
           <a class="active" href="#searchTitle">Keresés</a>
+          <a href="#pickingTitle">Kiadás</a>
           <a href="#logicTitle">Javaslatok</a>
           <a href="#issuesTitle">Figyelmeztetések</a>
           <a href="#tableTitle">Adatok</a>
@@ -86,22 +88,6 @@
 
             <p class="hint">Telefonkamerával is próbálható: a Kamera scan gomb beolvassa a cikkszámot, majd automatikusan keres.</p>
           </section>
-
-          <section class="metric-card blue">
-            <p>Kiadási gyakoriság</p>
-            <strong>8 / nap</strong>
-            <span>Mintaérték</span>
-          </section>
-          <section class="metric-card green">
-            <p>Forgási sebesség</p>
-            <strong>2 400 db / hó</strong>
-            <span>Excelből később számolható</span>
-          </section>
-          <section class="metric-card purple">
-            <p>Prioritás</p>
-            <strong>A</strong>
-            <span>Szabály alapján</span>
-          </section>
         </section>
 
         <section class="upload-panel" aria-labelledby="uploadTitle">
@@ -137,19 +123,44 @@
               Tölts fel egy Excelt, majd írd be vagy szkenneld be a cikkszámot.
             </div>
           </section>
+        </section>
 
-          <section class="panel logic-panel" aria-labelledby="logicTitle">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">Ajánlás</p>
-                <h2 id="logicTitle">Logikus elhelyezés</h2>
-              </div>
-              <button class="secondary-button" id="logicButton" type="button">Kalkulálás</button>
+        <section class="panel logic-panel" aria-labelledby="logicTitle">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Ajánlás</p>
+              <h2 id="logicTitle">Logikus elhelyezés</h2>
             </div>
-            <div id="logicList" class="logic-list">
-              Tölts fel adatot vagy használd a mintát, majd indítsd a kalkulálást.
+            <button class="secondary-button" id="logicButton" type="button">Kalkulálás</button>
+          </div>
+          <div id="logicList" class="logic-list">
+            Tölts fel adatot vagy használd a mintát, majd indítsd a kalkulálást.
+          </div>
+        </section>
+
+        <section class="panel picking-panel" aria-labelledby="pickingTitle">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Fotós kiadás</p>
+              <h2 id="pickingTitle">Kiadási útvonal</h2>
+              <p class="muted">Fotózd le a dinamikus kiadást, az app megpróbálja kiolvasni a nyitott sorokat és tárhely szerint sorba rakni.</p>
             </div>
-          </section>
+            <label class="file-button secondary-file">
+              <input id="pickingPhotoInput" type="file" accept="image/*">
+              Fotó beolvasása
+            </label>
+          </div>
+          <div class="quick-picking">
+            <label for="quickPickingInput">Gyorslista cikkszám + mennyiség alapján</label>
+            <textarea id="quickPickingInput" rows="5" placeholder="1013701 610&#10;1013694 105&#10;1013697 105"></textarea>
+            <button id="buildQuickPickingButton" type="button">Kiadási lista építése</button>
+          </div>
+          <div id="pickingStatus" class="import-notes">Nincs kiadási fotó betöltve.</div>
+          <div id="pickingList" class="picking-list">Fotó után itt jelennek meg a nyitott tételek.</div>
+          <details class="ocr-details">
+            <summary>OCR nyers szöveg</summary>
+            <pre id="ocrTextBox"></pre>
+          </details>
         </section>
 
         <section class="panel issues-panel" aria-labelledby="issuesTitle">

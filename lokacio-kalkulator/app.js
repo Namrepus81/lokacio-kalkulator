@@ -6,11 +6,12 @@ const SOURCE_REQUIRED_COLUMNS = [
 const MASTER_FIELDS = [
   "min",
   "max",
-  "forgas",
-  "tarolo",
-  "suly_kategoria",
-  "kapacitas",
 ];
+
+const STORAGE_KEYS = {
+  masterRows: "raktar-asszisztens-master-rows-v1",
+  masterStatus: "raktar-asszisztens-master-status-v1",
+};
 
 const SAMPLE_ROWS = [
   {
@@ -94,6 +95,9 @@ let masterRowsByItem = new Map();
 
 const fileInput = document.querySelector("#fileInput");
 const masterFileInput = document.querySelector("#masterFileInput");
+const pickingPhotoInput = document.querySelector("#pickingPhotoInput");
+const quickPickingInput = document.querySelector("#quickPickingInput");
+const buildQuickPickingButton = document.querySelector("#buildQuickPickingButton");
 const searchForm = document.querySelector("#searchForm");
 const searchInput = document.querySelector("#searchInput");
 const topSearchInput = document.querySelector("#topSearchInput");
@@ -122,16 +126,46 @@ const scanConfirm = document.querySelector("#scanConfirm");
 const scannedCodeText = document.querySelector("#scannedCodeText");
 const useScannedCodeButton = document.querySelector("#useScannedCodeButton");
 const retryScanButton = document.querySelector("#retryScanButton");
+const pickingStatus = document.querySelector("#pickingStatus");
+const pickingList = document.querySelector("#pickingList");
+const ocrTextBox = document.querySelector("#ocrTextBox");
 
 let scannerStream = null;
 let scannerDetector = null;
 let scannerActive = false;
 let pendingScannedCode = "";
 let searchMode = "item";
+let pickingRows = [];
+
+loadSavedMasterRows();
 
 fileInput.addEventListener("change", handleFileChange);
 masterFileInput.addEventListener("change", handleMasterFileChange);
+pickingPhotoInput.addEventListener("change", handlePickingPhotoChange);
+buildQuickPickingButton.addEventListener("click", buildQuickPickingList);
 searchForm.addEventListener("submit", handleSearch);
+pickingList.addEventListener("change", (event) => {
+  const checkbox = event.target.closest("[data-picking-id]");
+  if (checkbox) {
+    togglePickingDone(checkbox.dataset.pickingId, checkbox.checked);
+    return;
+  }
+
+  const input = event.target.closest("[data-picking-field]");
+  if (input) {
+    updatePickingField(input.dataset.pickingRowId, input.dataset.pickingField, input.value);
+  }
+});
+pickingList.addEventListener("input", (event) => {
+  const input = event.target.closest("[data-picking-field]");
+  if (!input) return;
+  updatePickingField(input.dataset.pickingRowId, input.dataset.pickingField, input.value, false);
+});
+pickingList.addEventListener("click", (event) => {
+  const removeButton = event.target.closest("[data-remove-picking-id]");
+  if (!removeButton) return;
+  removePickingRow(removeButton.dataset.removePickingId);
+});
 topSearchInput.addEventListener("input", () => {
   searchInput.value = topSearchInput.value;
 });
@@ -155,7 +189,7 @@ function handleFileChange(event) {
     return;
   }
   dataStatus.textContent = `Napi export kiválasztva: ${file.name}. Olvasás indul...`;
-  readUploadedRows(file, (parsedRows) => setRows(parsedRows, file.name));
+  readUploadedRows(file, (parsedRows, sheetName) => setRows(parsedRows, `${file.name} / ${sheetName}`), "source");
 }
 
 function handleMasterFileChange(event) {
@@ -165,10 +199,111 @@ function handleMasterFileChange(event) {
     return;
   }
   masterStatus.textContent = `Törzsadat kiválasztva: ${file.name}. Olvasás indul...`;
-  readUploadedRows(file, (parsedRows) => setMasterRows(parsedRows, file.name));
+  readUploadedRows(file, (parsedRows, sheetName) => setMasterRows(parsedRows, `${file.name} / ${sheetName}`), "master");
 }
 
-function readUploadedRows(file, onRows) {
+function buildQuickPickingList() {
+  const lines = quickPickingInput.value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (!lines.length) {
+    pickingStatus.textContent = "Írj be legalább egy sort: cikkszám mennyiség.";
+    return;
+  }
+
+  const builtRows = [];
+  const missingRows = [];
+
+  lines.forEach((line, index) => {
+    const parsed = parseQuickPickingLine(line);
+    if (!parsed) {
+      missingRows.push(`${line} -> nem értelmezhető`);
+      return;
+    }
+
+    const itemRows = findRowsForPickingSku(parsed.sku);
+    if (!itemRows.length) {
+      missingRows.push(`${parsed.sku} -> nincs lokáció a feltöltött Excelben`);
+      return;
+    }
+
+    itemRows.forEach((row, rowIndex) => {
+      builtRows.push({
+        id: `quick-${parsed.sku}-${index}-${rowIndex}`,
+        raw: line,
+        location: row.lokacio || "",
+        sku: row.cikkszam,
+        description: row.megnevezes || "Nincs megnevezés",
+        quantity: parsed.quantity,
+        statusText: "Gyorslista",
+        done: false,
+      });
+    });
+  });
+
+  pickingRows = builtRows.sort(comparePickingRows);
+  ocrTextBox.textContent = missingRows.join("\n");
+  renderPickingList();
+
+  if (missingRows.length) {
+    pickingStatus.textContent += ` Nem talált/hibás sor: ${missingRows.length}. Részletek az OCR nyers szöveg alatt.`;
+  }
+}
+
+function parseQuickPickingLine(line) {
+  const skuMatch = line.match(/\b[A-Z0-9][A-Z0-9-]{3,}\b/i);
+  const numberMatches = line.match(/\b\d+(?:[,.]\d+)?\b/g) || [];
+  if (!skuMatch || !numberMatches.length) return null;
+
+  const sku = skuMatch[0].toUpperCase();
+  const quantity = numberMatches[numberMatches.length - 1].replace(",", ".");
+  return { sku, quantity };
+}
+
+function findRowsForPickingSku(sku) {
+  const normalizedSku = stringify(sku).toLowerCase();
+  const candidates = analyzedRows.filter((row) => row.cikkszam.toLowerCase() === normalizedSku);
+  return candidates.length ? candidates : rows.filter((row) => row.cikkszam.toLowerCase() === normalizedSku);
+}
+
+async function handlePickingPhotoChange(event) {
+  const file = event.target.files[0];
+  if (!file) {
+    pickingStatus.textContent = "Nem lett fotó kiválasztva.";
+    return;
+  }
+
+  if (!window.Tesseract) {
+    pickingStatus.textContent = "Az OCR olvasó nem töltődött be. Frissítsd az oldalt, vagy nézd meg van-e internet.";
+    return;
+  }
+
+  pickingStatus.textContent = `Fotó kiválasztva: ${file.name}. OCR olvasás indul...`;
+  pickingList.innerHTML = `<div class="result-box empty">Olvasás folyamatban. Ez mobilon lehet 10-30 másodperc is.</div>`;
+  ocrTextBox.textContent = "";
+
+  try {
+    const result = await Tesseract.recognize(file, "eng+hun", {
+      logger: (progress) => {
+        if (progress.status === "recognizing text") {
+          pickingStatus.textContent = `OCR olvasás: ${Math.round(progress.progress * 100)}%`;
+        }
+      },
+    });
+
+    const text = result.data.text || "";
+    ocrTextBox.textContent = text;
+    pickingRows = parsePickingText(text).sort(comparePickingRows);
+    renderPickingList();
+  } catch (error) {
+    pickingStatus.textContent = `Nem sikerült kiolvasni a fotót: ${error.message}`;
+    pickingList.innerHTML = `<div class="result-box"><strong>OCR hiba:</strong> ${escapeHtml(error.message)}</div>`;
+  }
+}
+
+function readUploadedRows(file, onRows, mode = "source") {
   const extension = file.name.split(".").pop().toLowerCase();
   const reader = new FileReader();
 
@@ -180,7 +315,7 @@ function readUploadedRows(file, onRows) {
     try {
       if (extension === "csv") {
         const text = loadEvent.target.result;
-        onRows(parseCsv(text));
+        onRows(parseCsv(text), "CSV");
         return;
       }
 
@@ -190,10 +325,22 @@ function readUploadedRows(file, onRows) {
       }
 
       const workbook = XLSX.read(loadEvent.target.result, { type: "array" });
-      const firstSheetName = workbook.SheetNames[0];
+      if (mode === "master") {
+        const fixedMasterRows = buildFixedLocationMasterRows(workbook);
+        if (fixedMasterRows.length) {
+          onRows(fixedMasterRows, "Fix tárhely + Munka1 min/max");
+          return;
+        }
+      }
+
+      const firstSheetName = chooseWorkbookSheet(workbook, mode);
       const sheet = workbook.Sheets[firstSheetName];
       const parsedRows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
-      onRows(parsedRows);
+      onRows(parsedRows, firstSheetName);
+
+      if (mode === "source") {
+        importCompanionMasterSheet(workbook, file.name, firstSheetName);
+      }
     } catch (error) {
       showImportError(`Nem sikerült beolvasni a fájlt: ${error.message}`);
     }
@@ -204,6 +351,121 @@ function readUploadedRows(file, onRows) {
   } else {
     reader.readAsArrayBuffer(file);
   }
+}
+
+function buildFixedLocationMasterRows(workbook) {
+  const locationSheetName = workbook.SheetNames.find((name) => normalizeText(name).includes("terhelyek") || normalizeText(name).includes("tarhelyek"));
+  const minMaxSheetName = workbook.SheetNames.find((name) => normalizeText(name) === "munka1");
+  if (!locationSheetName || !minMaxSheetName) return [];
+
+  const locationRows = XLSX.utils.sheet_to_json(workbook.Sheets[locationSheetName], { defval: "" });
+  const minMaxRows = XLSX.utils.sheet_to_json(workbook.Sheets[minMaxSheetName], { defval: "" });
+  if (!locationRows.length || !minMaxRows.length) return [];
+
+  const minMaxBySku = new Map();
+  const issueQuantities = [];
+  minMaxRows.forEach((row) => {
+    const normalized = normalizeObjectKeys(row);
+    const sku = stringify(normalized.cikkszam || normalized.termek || normalized.anyag);
+    if (!sku) return;
+    const issueQuantity = toNumber(normalized.kiadas_mennyiseg || normalized.kiadasi_gyakorisag || normalized.kiadas || normalized.forgas);
+    if (issueQuantity !== "") issueQuantities.push(Number(issueQuantity));
+    minMaxBySku.set(sku, {
+      min: normalized.minimum_keszlet,
+      max: normalized.maximum_keszlet,
+      issueQuantity,
+    });
+  });
+  const issueThresholds = getIssueQuantityThresholds(issueQuantities);
+
+  return locationRows.map((row) => {
+    const normalized = normalizeObjectKeys(row);
+    const sku = stringify(normalized.termek || normalized.cikkszam || normalized.anyag);
+    const minMax = minMaxBySku.get(sku) || {};
+    return {
+      "cikkszám": sku,
+      "megnevezés": normalized.termek_rovid_leirasa || normalized.megnevezes || "",
+      "lokáció": normalized.tarhely || normalized.terhely || normalized.raktarhely || "",
+      "min": minMax.min ?? "",
+      "max": minMax.max ?? "",
+      "forgás": classifyIssueQuantity(minMax.issueQuantity, issueThresholds),
+      "kiadás_mennyiség": minMax.issueQuantity ?? "",
+    };
+  });
+}
+
+function getIssueQuantityThresholds(values) {
+  const sorted = values.filter((value) => Number.isFinite(value)).sort((left, right) => left - right);
+  if (!sorted.length) return { high: Infinity, low: -Infinity };
+  return {
+    low: sorted[Math.floor(sorted.length * 0.25)] ?? sorted[0],
+    high: sorted[Math.floor(sorted.length * 0.8)] ?? sorted[sorted.length - 1],
+  };
+}
+
+function classifyIssueQuantity(value, thresholds) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "";
+  if (number <= 0) return "lassú";
+  if (number >= thresholds.high) return "sűrű";
+  if (number <= thresholds.low) return "lassú";
+  return "közepes";
+}
+
+function normalizeObjectKeys(row) {
+  const normalized = {};
+  Object.entries(row).forEach(([key, value]) => {
+    normalized[normalizeKey(key)] = typeof value === "string" ? value.trim() : value;
+  });
+  return normalized;
+}
+
+function importCompanionMasterSheet(workbook, fileName, sourceSheetName) {
+  const masterSheetName = chooseWorkbookSheet(workbook, "master");
+  if (!masterSheetName || masterSheetName === sourceSheetName) return;
+
+  const rows = XLSX.utils.sheet_to_json(workbook.Sheets[masterSheetName], { defval: "" });
+  if (!rows.length) return;
+
+  const headers = Object.keys(rows[0] || {}).map(normalizeKey);
+  if (scoreSheetHeaders(headers, "master", masterSheetName) < 5) return;
+
+  setMasterRows(rows, `${fileName} / ${masterSheetName}`);
+}
+
+function chooseWorkbookSheet(workbook, mode) {
+  const candidates = workbook.SheetNames
+    .map((sheetName) => {
+      const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: "", header: 1 });
+      const header = rows.find((row) => row.some((cell) => stringify(cell))) || [];
+      const headers = header.map(normalizeKey);
+      return {
+        sheetName,
+        score: scoreSheetHeaders(headers, mode, sheetName),
+        rowCount: rows.length,
+      };
+    })
+    .sort((left, right) => right.score - left.score || right.rowCount - left.rowCount);
+
+  return candidates[0]?.sheetName || workbook.SheetNames[0];
+}
+
+function scoreSheetHeaders(headers, mode, sheetName = "") {
+  const normalizedSheetName = normalizeText(sheetName);
+  const hasItem = headers.some((key) => ["cikkszam", "termek", "anyag", "cikkszam_"].includes(key));
+  const hasLocation = headers.some((key) => ["lokacio", "location", "raktarhely", "tarhely", "terhely"].includes(key));
+  const hasDescription = headers.some((key) => ["megnevezes", "nev", "anyagnev", "termek_rovid_leirasa"].includes(key));
+  const hasMin = headers.some((key) => ["min", "minimum_keszlet", "minimum_mennyiseg"].includes(key));
+  const hasMax = headers.some((key) => ["max", "maximum_keszlet", "maximum_mennyiseg", "max_mennyiseg"].includes(key));
+  const hasContainer = headers.some((key) => ["tarolo", "lada", "tarolo_tipus"].includes(key));
+
+  if (mode === "master") {
+    const nameBonus = normalizedSheetName.includes("min") || normalizedSheetName.includes("max") ? 5 : 0;
+    return [hasItem, hasMin, hasMax, hasLocation, hasContainer, hasDescription].filter(Boolean).length + nameBonus;
+  }
+
+  const nameBonus = normalizedSheetName.includes("cikkszam") || normalizedSheetName.includes("terhely") || normalizedSheetName.includes("tarhely") ? 5 : 0;
+  return [hasItem, hasLocation, hasDescription, hasDescription, hasMin, hasMax].filter(Boolean).length + nameBonus;
 }
 
 function setRows(rawRows, sourceName) {
@@ -237,6 +499,7 @@ function setMasterRows(rawRows, sourceName) {
   });
 
   masterStatus.textContent = `${sourceName}: ${masterRowsByItem.size} cikkszám a törzsben`;
+  saveMasterRows(normalized, masterStatus.textContent);
 
   if (importRows.length) {
     rows = importRows.map(mergeMasterData);
@@ -250,6 +513,38 @@ function setMasterRows(rawRows, sourceName) {
   }
 }
 
+function saveMasterRows(normalizedRows, statusText) {
+  try {
+    localStorage.setItem(STORAGE_KEYS.masterRows, JSON.stringify(normalizedRows));
+    localStorage.setItem(STORAGE_KEYS.masterStatus, statusText);
+  } catch (error) {
+    masterStatus.textContent = `${statusText} | Mentés nem sikerült ezen az eszközön.`;
+  }
+}
+
+function loadSavedMasterRows() {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEYS.masterRows);
+    if (!saved) return;
+
+    const parsed = JSON.parse(saved);
+    if (!Array.isArray(parsed) || !parsed.length) return;
+
+    masterRowsByItem = new Map();
+    parsed.forEach((row) => {
+      const existing = masterRowsByItem.get(row.cikkszam) || {};
+      masterRowsByItem.set(row.cikkszam, {
+        ...existing,
+        ...removeEmptyFields(row),
+      });
+    });
+
+    masterStatus.textContent = localStorage.getItem(STORAGE_KEYS.masterStatus) || `Mentett törzsadat: ${masterRowsByItem.size} cikkszám`;
+  } catch (error) {
+    masterStatus.textContent = "Mentett törzsadat nem olvasható, töltsd be újra az Excelt.";
+  }
+}
+
 function mergeMasterData(row) {
   const master = masterRowsByItem.get(row.cikkszam);
   if (!master) return row;
@@ -260,6 +555,7 @@ function mergeMasterData(row) {
     min: row.min === "" ? master.min ?? "" : row.min,
     max: row.max === "" ? master.max ?? "" : row.max,
     forgas: row.forgas || master.forgas || "",
+    kiadas_mennyiseg: row.kiadas_mennyiseg === "" ? master.kiadas_mennyiseg ?? "" : row.kiadas_mennyiseg,
     tarolo: row.tarolo || master.tarolo || "",
     suly_kategoria: row.suly_kategoria || master.suly_kategoria || "",
     kapacitas: row.kapacitas === "" ? master.kapacitas ?? "" : row.kapacitas,
@@ -278,16 +574,17 @@ function normalizeRow(row) {
     normalized[normalizeKey(key)] = typeof value === "string" ? value.trim() : value;
   });
 
-  const lokacio = stringify(normalized.lokacio || normalized.location || normalized.raktarhely);
+  const lokacio = stringify(normalized.lokacio || normalized.location || normalized.raktarhely || normalized.tarhely || normalized.terhely);
   const explicitLevel = toNumber(normalized.szint);
 
   return {
     cikkszam: stringify(normalized.cikkszam || normalized.termek || normalized.anyag || normalized.cikkszam_),
     megnevezes: stringify(normalized.megnevezes || normalized.nev || normalized.anyagnev || normalized.termek_rovid_leirasa),
     lokacio,
-    min: toNumber(normalized.min),
-    max: toNumber(normalized.max),
+    min: toNumber(normalized.min || normalized.minimum_keszlet || normalized.minimum_mennyiseg),
+    max: toNumber(normalized.max || normalized.maximum_keszlet || normalized.maximum_mennyiseg || normalized.max_mennyiseg),
     forgas: stringify(normalized.forgas),
+    kiadas_mennyiseg: toNumber(normalized.kiadas_mennyiseg || normalized.kiadasi_gyakorisag || normalized.kiadas),
     tarolo: stringify(normalized.tarolo || normalized.lada || normalized.tarolo_tipus),
     suly_kategoria: stringify(normalized.suly_kategoria || normalized.suly || normalized.nehezseg),
     szint: explicitLevel === "" ? getLocationLevel(lokacio) : explicitLevel,
@@ -334,6 +631,8 @@ function analyzeRow(row) {
   const warnings = [];
   const errors = [];
   const locationZone = getLocationZone(row.lokacio);
+  const level = Number(row.szint);
+  const isInfoOnlyLevel = level >= 3;
   const forgas = normalizeText(row.forgas);
   const tarolo = normalizeText(row.tarolo);
   const suly = normalizeText(row.suly_kategoria);
@@ -341,33 +640,29 @@ function analyzeRow(row) {
   if (!row.lokacio) errors.push("Hiányzik a lokáció.");
   if (row.min === "") warnings.push("Hiányzik a minimum készlet.");
   if (row.max === "") warnings.push("Hiányzik a maximum készlet.");
-  if (!row.forgas) warnings.push("Hiányzik a forgás kategória.");
-  if (!row.tarolo) warnings.push("Hiányzik a tároló típusa.");
-  if (!row.suly_kategoria) warnings.push("Hiányzik a súly/nehezség kategória.");
   if (row.szint === "") warnings.push("Hiányzik a szint.");
-  if (row.kapacitas === "") warnings.push("Hiányzik a lokáció kapacitása.");
 
   if (row.min !== "" && row.max !== "" && row.min > row.max) {
     errors.push("A minimum nagyobb, mint a maximum.");
   }
 
-  if (forgas.includes("suru") && locationZone === "hatul") {
+  if (!isInfoOnlyLevel && forgas.includes("suru") && locationZone === "hatul") {
     warnings.push("Sűrűn forgó anyag hátul van, érdemes előrébb tenni.");
   }
 
-  if (forgas.includes("lassu") && locationZone === "elol") {
+  if (!isInfoOnlyLevel && forgas.includes("lassu") && locationZone === "elol") {
     warnings.push("Lassan forgó anyag elöl van, jó helyet foglalhat a sűrű anyagok elől.");
   }
 
-  if (suly.includes("nehez") && Number(row.szint) >= 2) {
+  if (!isInfoOnlyLevel && suly.includes("nehez") && level >= 2) {
     errors.push("Nehéz anyag magas szinten van.");
   }
 
-  if ((tarolo.includes("xl") || tarolo.includes("nagy")) && Number(row.szint) >= 2) {
+  if (!isInfoOnlyLevel && (tarolo.includes("xl") || tarolo.includes("nagy")) && level >= 2) {
     warnings.push("Nagy vagy XL láda magas szinten van.");
   }
 
-  if (tarolo.includes("raklap") && Number(row.szint) >= 2) {
+  if (!isInfoOnlyLevel && tarolo.includes("raklap") && level >= 2) {
     errors.push("Raklapos anyag nem ideális felső szinten.");
   }
 
@@ -376,10 +671,10 @@ function analyzeRow(row) {
 }
 
 function getLocationZone(location) {
-  const prefix = stringify(location).split("-")[0].charAt(0).toUpperCase();
-  if (["A", "B"].includes(prefix)) return "elol";
-  if (["C", "D"].includes(prefix)) return "kozep";
-  if (["E", "F", "G", "H"].includes(prefix)) return "hatul";
+  const column = parseLocationParts(location).column;
+  if (column >= 1 && column <= 10) return "elol";
+  if (column >= 11 && column <= 20) return "kozep";
+  if (column >= 21 && column <= 30) return "hatul";
   return "ismeretlen";
 }
 
@@ -401,7 +696,7 @@ function isCalculationLocation(location) {
 }
 
 function scorePlacement(row, itemRows) {
-  if (!isCalculationLocation(row.lokacio)) {
+  if (!isCalculationLocation(row.lokacio) || Number(row.szint) > 2) {
     return { score: -999, reasons: ["nem kalkulációs lokáció, csak tájékoztató"] };
   }
 
@@ -458,17 +753,6 @@ function scorePlacement(row, itemRows) {
       score -= 15;
       reasons.push("nagy tároló második szinten figyelendő");
     }
-  }
-
-  if (level === 1) score += 18;
-  if (level === 2) score += 10;
-  if (level === 3) {
-    score -= 35;
-    reasons.push("3. szint csak tájékoztató tartalék");
-  }
-  if (level >= 4) {
-    score -= 55;
-    reasons.push("4. szint csak tájékoztató tartalék");
   }
 
   if (item.max !== "" && row.kapacitas !== "") {
@@ -633,6 +917,7 @@ function renderResult(matchingRows, query) {
   const item = analyzeItem(matchingRows);
   const firstRow = matchingRows[0];
   const messages = [...item.errors, ...item.warnings];
+  const searchedRecommendation = buildSingleItemRecommendation(matchingRows);
   resultBox.className = "result-box";
   resultBox.innerHTML = `
     <div class="result-title">
@@ -647,12 +932,14 @@ function renderResult(matchingRows, query) {
       <div><small>Alsó 2 szint kapacitás</small><strong>${formatValue(item.lowerCapacity)}</strong></div>
       <div><small>Info kapacitás</small><strong>${formatValue(item.infoCapacity)}</strong></div>
       <div><small>Forgás</small><strong>${escapeHtml(firstRow.forgas || "-")}</strong></div>
+      <div><small>6 havi kiadás</small><strong>${formatValue(firstRow.kiadas_mennyiseg)}</strong></div>
     </div>
     ${
       messages.length
         ? `<ul class="warning-list">${messages.map((message) => `<li>${escapeHtml(message)}</li>`).join("")}</ul>`
         : "<p>Állapot: rendben, a megadott kapacitás alapján az alsó két szint elég.</p>"
     }
+    ${renderSearchedRecommendation(searchedRecommendation)}
     <div class="location-list">
       ${matchingRows
         .map(
@@ -670,6 +957,51 @@ function renderResult(matchingRows, query) {
           `
         )
         .join("")}
+    </div>
+  `;
+}
+
+function buildSingleItemRecommendation(itemRows) {
+  const calculationRows = itemRows
+    .filter((row) => isCalculationLocation(row.lokacio) && Number(row.szint) <= 2)
+    .map((row) => ({
+      ...row,
+      placement: scorePlacement(row, itemRows),
+    }))
+    .sort((a, b) => b.placement.score - a.placement.score);
+
+  return {
+    bestRows: calculationRows.slice(0, 2),
+    reasons: calculationRows.flatMap((row) => row.placement.reasons).slice(0, 3),
+  };
+}
+
+function renderSearchedRecommendation(recommendation) {
+  if (!recommendation.bestRows.length) {
+    return `<div class="inline-advice">Ehhez a cikkszámhoz nincs 1-2. szintű A-A, A-B, A-C vagy A-D javasolható lokáció.</div>`;
+  }
+
+  const meaningfulRows = recommendation.bestRows.filter((row) => row.placement.score !== 0 || row.placement.reasons.length);
+  if (!meaningfulRows.length) {
+    return `<div class="inline-advice"><strong>Rövid ajánlás</strong><div>Nincs érdemi ajánlás ehhez a cikkszámhoz.</div><small>Nincs 6 havi kiadás vagy más pontozható adat, ezért a lokáció csak információként jelenik meg.</small></div>`;
+  }
+
+  const bestScore = meaningfulRows[0].placement.score;
+  if (bestScore < 0) {
+    return `
+      <div class="inline-advice warning-advice">
+        <strong>Rövid ajánlás</strong>
+        <div>Nem ideális elhelyezés: ${meaningfulRows.map((row) => `${escapeHtml(row.lokacio)} (${row.placement.score} pont)`).join(" → ")}</div>
+        <small>${escapeHtml(recommendation.reasons[0] || "Lassan mozgó vagy rossz zónában lévő anyag, érdemes hátrébb tenni.")}</small>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="inline-advice">
+      <strong>Rövid ajánlás</strong>
+      <div>${meaningfulRows.map((row) => `${escapeHtml(row.lokacio)} (${row.placement.score} pont)`).join(" → ")}</div>
+      <small>${escapeHtml(recommendation.reasons[0] || "Pontozható adatok alapján ez a legjobb sorrend.")}</small>
     </div>
   `;
 }
@@ -740,7 +1072,7 @@ function analyzeItem(itemRows) {
   const warnings = [];
   const errors = [];
 
-  itemRows.forEach((row) => {
+  itemRows.filter((row) => Number(row.szint) <= 2).forEach((row) => {
     errors.push(...row.analysis.errors.map((message) => `${row.lokacio || "-"}: ${message}`));
     warnings.push(...row.analysis.warnings.map((message) => `${row.lokacio || "-"}: ${message}`));
   });
@@ -776,7 +1108,7 @@ function buildPlacementRecommendations() {
   return groupRowsByItem()
     .map((itemRows) => {
       const item = analyzeItem(itemRows);
-      const calculationRows = itemRows.filter((row) => isCalculationLocation(row.lokacio));
+      const calculationRows = itemRows.filter((row) => isCalculationLocation(row.lokacio) && Number(row.szint) <= 2);
       const scoredRows = calculationRows
         .map((row) => ({
           ...row,
@@ -861,6 +1193,188 @@ function getBestReason(rowsForItem) {
   const reasons = rowsForItem.flatMap((row) => row.placement.reasons);
   if (!reasons.length) return "Nincs külön indok, az adatok alapján semleges elhelyezés.";
   return `Fő indok: ${reasons[0]}.`;
+}
+
+function parsePickingText(text) {
+  return text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map(parsePickingLine)
+    .filter(Boolean);
+}
+
+function parsePickingLine(line, index) {
+  const normalized = normalizeText(line);
+  const locationMatch = line.match(/\b[A-Z]-[A-Z]-\d{1,3}-\d\b/i);
+  if (!locationMatch) return null;
+
+  const isBooked = normalized.includes("konyvelve");
+  const isOpen = normalized.includes("uj tetel") || !isBooked;
+  if (!isOpen) return null;
+
+  const location = locationMatch[0].toUpperCase();
+  const beforeLocation = line.slice(0, locationMatch.index);
+  const afterLocation = line.slice(locationMatch.index + location.length);
+  const skuMatch = beforeLocation.match(/\b\d{6,8}\b/);
+  const numbersBeforeLocation = beforeLocation.match(/\b\d{1,6}\b/g) || [];
+  const quantity = numbersBeforeLocation.length ? numbersBeforeLocation[numbersBeforeLocation.length - 1] : "";
+  const sku = skuMatch ? skuMatch[0] : "";
+  const description = cleanPickingDescription(beforeLocation, sku, quantity);
+
+  return {
+    id: `${location}-${sku || index}-${index}`,
+    raw: line,
+    location,
+    sku,
+    description,
+    quantity,
+    statusText: afterLocation.trim(),
+    done: false,
+  };
+}
+
+function cleanPickingDescription(text, sku, quantity) {
+  let value = text;
+  if (sku) value = value.replace(sku, " ");
+  if (quantity) value = value.replace(new RegExp(`\\b${quantity}\\b\\s*$`), " ");
+  value = value
+    .replace(/\b\d{4}[.:-]\d{1,2}[.:-]\d{1,2}\b/g, " ")
+    .replace(/\b\d{1,2}:\d{2}\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return value || "Nincs megnevezés";
+}
+
+function comparePickingRows(left, right) {
+  const leftParts = getPickingRouteKey(left.location);
+  const rightParts = getPickingRouteKey(right.location);
+  return (
+    leftParts.route - rightParts.route ||
+    leftParts.column - rightParts.column ||
+    leftParts.level - rightParts.level ||
+    left.sku.localeCompare(right.sku, "hu", { numeric: true, sensitivity: "base" })
+  );
+}
+
+function getPickingRouteKey(location) {
+  const parts = parseLocationParts(location);
+  const prefix = `${parts.zone}-${parts.aisle}`;
+  const routeMap = {
+    "A-A": { route: 1, direction: 1 },
+    "A-B": { route: 2, direction: 1 },
+    "A-C": { route: 3, direction: -1 },
+    "A-D": { route: 4, direction: -1 },
+  };
+  const route = routeMap[prefix];
+
+  if (!route) {
+    return {
+      route: 99,
+      column: parts.column,
+      level: parts.level,
+    };
+  }
+
+  return {
+    route: route.route,
+    column: parts.column * route.direction,
+    level: parts.level,
+  };
+}
+
+function parseLocationParts(location) {
+  const parts = stringify(location).toUpperCase().split("-");
+  return {
+    zone: parts[0] || "",
+    aisle: parts[1] || "",
+    column: Number(parts[2] || 0),
+    level: Number(parts[3] || 0),
+  };
+}
+
+function renderPickingList() {
+  if (!pickingRows.length) {
+    pickingStatus.textContent = "Nem találtam nyitott kiadási sort. Ha van nyitott sor a képen, próbáld közelebbről vagy szemből fotózni.";
+    pickingList.innerHTML = `<div class="result-box empty">Nincs felismerhető nyitott tétel.</div>`;
+    return;
+  }
+
+  const doneCount = pickingRows.filter((row) => row.done).length;
+  pickingStatus.textContent = `Felismert nyitott sor: ${pickingRows.length}. Kész: ${doneCount}/${pickingRows.length}. Ellenőrizd, mert fotóból olvasva lehet tévesztés.`;
+  pickingList.innerHTML = `
+    <div class="picking-progress">
+      <strong>${doneCount}/${pickingRows.length} kész</strong>
+      <span>Következő: ${escapeHtml(nextPickingLocation() || "-")}</span>
+    </div>
+    ${pickingRows.map(renderPickingCard).join("")}
+  `;
+}
+
+function renderPickingCard(row, index) {
+  return `
+    <article class="picking-card ${row.done ? "done" : ""}">
+      <label class="picking-check">
+        <input type="checkbox" data-picking-id="${escapeHtml(row.id)}" ${row.done ? "checked" : ""}>
+        <span>${index + 1}</span>
+      </label>
+      <div class="picking-edit-grid">
+        <label>
+          <small>Tárhely</small>
+          <input data-picking-row-id="${escapeHtml(row.id)}" data-picking-field="location" value="${escapeHtml(row.location)}">
+        </label>
+        <label>
+          <small>Cikkszám</small>
+          <input data-picking-row-id="${escapeHtml(row.id)}" data-picking-field="sku" value="${escapeHtml(row.sku)}">
+        </label>
+      </div>
+      <div class="picking-edit-grid">
+        <label>
+          <small>Mennyiség</small>
+          <input data-picking-row-id="${escapeHtml(row.id)}" data-picking-field="quantity" inputmode="numeric" value="${escapeHtml(row.quantity)}">
+        </label>
+        <label>
+          <small>Megnevezés</small>
+          <input data-picking-row-id="${escapeHtml(row.id)}" data-picking-field="description" value="${escapeHtml(row.description)}">
+        </label>
+      </div>
+      <details>
+        <summary>Nyers sor</summary>
+        <small>${escapeHtml(row.raw)}</small>
+      </details>
+      <button class="danger-button" data-remove-picking-id="${escapeHtml(row.id)}" type="button">Törlés</button>
+    </article>
+  `;
+}
+
+function nextPickingLocation() {
+  const next = pickingRows.find((row) => !row.done);
+  return next ? next.location : "";
+}
+
+function togglePickingDone(id, checked) {
+  const row = pickingRows.find((item) => item.id === id);
+  if (!row) return;
+  row.done = checked;
+  renderPickingList();
+}
+
+function updatePickingField(id, field, value, rerender = true) {
+  const row = pickingRows.find((item) => item.id === id);
+  if (!row || !["location", "sku", "quantity", "description"].includes(field)) return;
+  row[field] = field === "location" ? value.toUpperCase().trim() : value.trim();
+  if (rerender) {
+    pickingRows.sort(comparePickingRows);
+    renderPickingList();
+  } else {
+    const doneCount = pickingRows.filter((item) => item.done).length;
+    pickingStatus.textContent = `Felismert nyitott sor: ${pickingRows.length}. Kész: ${doneCount}/${pickingRows.length}. Szerkesztés után a mező elhagyásakor rendez újra.`;
+  }
+}
+
+function removePickingRow(id) {
+  pickingRows = pickingRows.filter((row) => row.id !== id);
+  renderPickingList();
 }
 
 function renderAll() {
