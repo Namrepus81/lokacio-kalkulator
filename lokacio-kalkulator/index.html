@@ -11,7 +11,7 @@
   </head>
   <body>
     <main class="app-shell">
-      <aside class="sidebar">
+      <aside class="sidebar" id="sidebarMenu">
         <div class="brand">
           <div class="brand-mark">RA</div>
           <div>
@@ -46,9 +46,11 @@
 
         <div class="side-status" id="dataStatus">Nincs feltöltött adat</div>
       </aside>
+      <button class="sidebar-backdrop" id="sidebarBackdrop" type="button" aria-label="Menü bezárása"></button>
 
       <section class="workspace">
         <header class="topbar">
+          <button class="icon-button mobile-menu-button" id="menuButton" type="button" aria-label="Menü megnyitása" aria-controls="sidebarMenu" aria-expanded="false">&#9776;</button>
           <button class="icon-button" type="button" aria-label="Menü" hidden>☰</button>
           <div class="top-search">
             <span>⌕</span>

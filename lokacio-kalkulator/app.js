@@ -101,6 +101,9 @@ const buildQuickPickingButton = document.querySelector("#buildQuickPickingButton
 const searchForm = document.querySelector("#searchForm");
 const searchInput = document.querySelector("#searchInput");
 const topSearchInput = document.querySelector("#topSearchInput");
+const menuButton = document.querySelector("#menuButton");
+const sidebarBackdrop = document.querySelector("#sidebarBackdrop");
+const sideNav = document.querySelector(".side-nav");
 const itemSearchMode = document.querySelector("#itemSearchMode");
 const locationSearchMode = document.querySelector("#locationSearchMode");
 const searchTitle = document.querySelector("#searchTitle");
@@ -181,6 +184,26 @@ scanButton.addEventListener("click", startScanner);
 closeScannerButton.addEventListener("click", stopScanner);
 useScannedCodeButton.addEventListener("click", confirmScannedCode);
 retryScanButton.addEventListener("click", retryScanner);
+menuButton?.addEventListener("click", toggleMobileMenu);
+sidebarBackdrop?.addEventListener("click", closeMobileMenu);
+sideNav?.addEventListener("click", (event) => {
+  if (event.target.closest("a")) closeMobileMenu();
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") closeMobileMenu();
+});
+
+function toggleMobileMenu() {
+  const isOpen = document.body.classList.toggle("menu-open");
+  menuButton?.setAttribute("aria-expanded", String(isOpen));
+  menuButton?.setAttribute("aria-label", isOpen ? "Menü bezárása" : "Menü megnyitása");
+}
+
+function closeMobileMenu() {
+  document.body.classList.remove("menu-open");
+  menuButton?.setAttribute("aria-expanded", "false");
+  menuButton?.setAttribute("aria-label", "Menü megnyitása");
+}
 
 function handleFileChange(event) {
   const file = event.target.files[0];
@@ -229,15 +252,29 @@ function buildQuickPickingList() {
       return;
     }
 
-    itemRows.forEach((row, rowIndex) => {
+    const pickingLocations = selectPickingRowsForItem(itemRows, parsed.quantity);
+
+    if (!pickingLocations.length) {
+      missingRows.push(`${parsed.sku} -> nincs kiadható lokáció vagy készletfedezet`);
+      return;
+    }
+
+    const requested = Number(toNumber(parsed.quantity));
+    const covered = pickingLocations.reduce((sum, pick) => sum + (Number(toNumber(pick.quantity)) || 0), 0);
+    if (Number.isFinite(requested) && requested > 0 && covered > 0 && covered < requested) {
+      missingRows.push(`${parsed.sku} -> nincs elég fedezet, hiány: ${formatPickingQuantity(requested - covered)}`);
+    }
+
+    pickingLocations.forEach((pick, rowIndex) => {
+      const row = pick.row;
       builtRows.push({
         id: `quick-${parsed.sku}-${index}-${rowIndex}`,
         raw: line,
         location: row.lokacio || "",
         sku: row.cikkszam,
         description: row.megnevezes || "Nincs megnevezés",
-        quantity: parsed.quantity,
-        statusText: "Gyorslista",
+        quantity: pick.quantity,
+        statusText: pick.note,
         done: false,
       });
     });
@@ -266,6 +303,78 @@ function findRowsForPickingSku(sku) {
   const normalizedSku = stringify(sku).toLowerCase();
   const candidates = analyzedRows.filter((row) => row.cikkszam.toLowerCase() === normalizedSku);
   return candidates.length ? candidates : rows.filter((row) => row.cikkszam.toLowerCase() === normalizedSku);
+}
+
+function selectPickingRowsForItem(itemRows, requestedQuantity) {
+  const requested = Number(toNumber(requestedQuantity));
+  const lowerRows = itemRows
+    .filter((row) => Number(row.szint) <= 2)
+    .sort(compareRowsByPickingRoute);
+  const upperRows = itemRows
+    .filter((row) => Number(row.szint) >= 3)
+    .sort(compareRowsByPickingRoute);
+
+  if (!Number.isFinite(requested) || requested <= 0) {
+    return lowerRows.map((row) => ({
+      row,
+      quantity: requestedQuantity,
+      note: "Alsó szint, mennyiség ellenőrzés nélkül",
+    }));
+  }
+
+  const hasStockData = itemRows.some((row) => row.mennyiseg !== "");
+
+  if (!hasStockData) {
+    return lowerRows.map((row, index) => ({
+      row,
+      quantity: index === 0 ? requestedQuantity : "",
+      note: "Alsó szint, nincs készletadat a felső szint számításához",
+    }));
+  }
+
+  let remaining = requested;
+  const selected = [];
+
+  lowerRows.forEach((row) => {
+    if (remaining <= 0) return;
+    const available = Math.max(0, Number(row.mennyiseg) || 0);
+    if (available <= 0) return;
+    const quantity = Math.min(available, remaining);
+    selected.push({
+      row,
+      quantity: formatPickingQuantity(quantity),
+      note: "Alsó szint",
+    });
+    remaining -= quantity;
+  });
+
+  if (remaining <= 0) return selected;
+
+  upperRows.forEach((row) => {
+    if (remaining <= 0) return;
+    const available = Math.max(0, Number(row.mennyiseg) || 0);
+    if (available <= 0) return;
+    const quantity = Math.min(available, remaining);
+    selected.push({
+      row,
+      quantity: formatPickingQuantity(quantity),
+      note: "Felső szint csak fedezetpótlás",
+    });
+    remaining -= quantity;
+  });
+
+  return selected;
+}
+
+function compareRowsByPickingRoute(left, right) {
+  return comparePickingRows(
+    { location: left.lokacio || "", sku: left.cikkszam || "" },
+    { location: right.lokacio || "", sku: right.cikkszam || "" },
+  );
+}
+
+function formatPickingQuantity(value) {
+  return Number.isInteger(value) ? String(value) : String(Math.round(value * 1000) / 1000);
 }
 
 async function handlePickingPhotoChange(event) {
@@ -1342,6 +1451,7 @@ function renderPickingCard(row, index) {
         <summary>Nyers sor</summary>
         <small>${escapeHtml(row.raw)}</small>
       </details>
+      ${row.statusText ? `<small class="picking-note">${escapeHtml(row.statusText)}</small>` : ""}
       <button class="danger-button" data-remove-picking-id="${escapeHtml(row.id)}" type="button">Törlés</button>
     </article>
   `;

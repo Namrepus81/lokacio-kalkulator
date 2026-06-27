@@ -231,6 +231,11 @@ h3 {
   color: var(--muted);
 }
 
+.mobile-menu-button,
+.sidebar-backdrop {
+  display: none;
+}
+
 .scan-button {
   min-width: 120px;
   border: 1px solid rgba(87, 160, 255, 0.35);
@@ -697,6 +702,16 @@ h3 {
   font-size: 12px;
 }
 
+.picking-note {
+  grid-column: 2 / -1;
+  justify-self: start;
+  border: 1px solid rgba(87, 160, 255, 0.28);
+  border-radius: 999px;
+  padding: 4px 8px;
+  color: var(--blue-2);
+  background: rgba(35, 118, 255, 0.12);
+}
+
 .picking-check {
   display: grid;
   place-items: center;
@@ -966,6 +981,49 @@ tbody tr:hover {
 }
 
 @media (max-width: 760px) {
+  body.menu-open {
+    overflow: hidden;
+  }
+
+  .mobile-menu-button {
+    display: inline-grid;
+    place-items: center;
+  }
+
+  .sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 20;
+    width: min(84vw, 310px);
+    height: 100vh;
+    overflow-y: auto;
+    border-right: 1px solid var(--line);
+    border-bottom: 0;
+    transform: translateX(-105%);
+    transition: transform 180ms ease;
+    box-shadow: var(--shadow);
+  }
+
+  body.menu-open .sidebar {
+    transform: translateX(0);
+  }
+
+  .sidebar-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 15;
+    width: 100%;
+    min-height: 100vh;
+    border: 0;
+    border-radius: 0;
+    padding: 0;
+    background: rgba(0, 0, 0, 0.48);
+  }
+
+  body.menu-open .sidebar-backdrop {
+    display: block;
+  }
+
   .workspace {
     padding: 0 12px 24px;
   }
