@@ -13,6 +13,8 @@ const STORAGE_KEYS = {
   masterStatus: "raktar-asszisztens-master-status-v1",
 };
 
+const SHARED_EXPORT_URL = "data/napi-export.xlsx";
+
 const SAMPLE_ROWS = [
   {
     cikkszam: "1013818",
@@ -94,6 +96,7 @@ let importRows = [];
 let masterRowsByItem = new Map();
 
 const fileInput = document.querySelector("#fileInput");
+const sharedExportButton = document.querySelector("#sharedExportButton");
 const masterFileInput = document.querySelector("#masterFileInput");
 const pickingPhotoInput = document.querySelector("#pickingPhotoInput");
 const quickPickingInput = document.querySelector("#quickPickingInput");
@@ -143,6 +146,7 @@ let pickingRows = [];
 loadSavedMasterRows();
 
 fileInput.addEventListener("change", handleFileChange);
+sharedExportButton.addEventListener("click", loadSharedExport);
 masterFileInput.addEventListener("change", handleMasterFileChange);
 pickingPhotoInput.addEventListener("change", handlePickingPhotoChange);
 buildQuickPickingButton.addEventListener("click", buildQuickPickingList);
@@ -213,6 +217,38 @@ function handleFileChange(event) {
   }
   dataStatus.textContent = `Napi export kiválasztva: ${file.name}. Olvasás indul...`;
   readUploadedRows(file, (parsedRows, sheetName) => setRows(parsedRows, `${file.name} / ${sheetName}`), "source");
+}
+
+async function loadSharedExport() {
+  if (!window.XLSX) {
+    showImportError("Az Excel olvasó nem töltődött be. Frissítsd az oldalt, vagy próbáld meg később.");
+    return;
+  }
+
+  sharedExportButton.disabled = true;
+  dataStatus.textContent = "GitHub export betöltése indul...";
+
+  try {
+    const cacheBuster = `v=${Date.now()}`;
+    const separator = SHARED_EXPORT_URL.includes("?") ? "&" : "?";
+    const response = await fetch(`${SHARED_EXPORT_URL}${separator}${cacheBuster}`, { cache: "no-store" });
+
+    if (!response.ok) {
+      throw new Error(`nem elérhető (${response.status})`);
+    }
+
+    const buffer = await response.arrayBuffer();
+    const workbook = XLSX.read(buffer, { type: "array" });
+    const firstSheetName = chooseWorkbookSheet(workbook, "source");
+    const sheet = workbook.Sheets[firstSheetName];
+    const parsedRows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+    setRows(parsedRows, `GitHub export / ${firstSheetName}`);
+    importCompanionMasterSheet(workbook, "GitHub export", firstSheetName);
+  } catch (error) {
+    showImportError(`GitHub export nem tölthető be: ${error.message}. Ellenőrizd, hogy létezik-e: ${SHARED_EXPORT_URL}`);
+  } finally {
+    sharedExportButton.disabled = false;
+  }
 }
 
 function handleMasterFileChange(event) {
