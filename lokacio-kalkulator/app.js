@@ -13,7 +13,7 @@ const STORAGE_KEYS = {
   masterStatus: "raktar-asszisztens-master-status-v1",
 };
 
-const SHARED_EXPORT_URL = "data/EXPORT.xlsx";
+const SHARED_EXPORT_URLS = ["data/EXPORT.XLSX", "data/EXPORT.xlsx"];
 
 const SAMPLE_ROWS = [
   {
@@ -229,26 +229,34 @@ async function loadSharedExport() {
   dataStatus.textContent = "GitHub export betöltése indul...";
 
   try {
-    const cacheBuster = `v=${Date.now()}`;
-    const separator = SHARED_EXPORT_URL.includes("?") ? "&" : "?";
-    const response = await fetch(`${SHARED_EXPORT_URL}${separator}${cacheBuster}`, { cache: "no-store" });
-
-    if (!response.ok) {
-      throw new Error(`nem elérhető (${response.status})`);
-    }
+    const { response, url } = await fetchFirstAvailableExport();
 
     const buffer = await response.arrayBuffer();
     const workbook = XLSX.read(buffer, { type: "array" });
     const firstSheetName = chooseWorkbookSheet(workbook, "source");
     const sheet = workbook.Sheets[firstSheetName];
     const parsedRows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
-    setRows(parsedRows, `GitHub export / ${firstSheetName}`);
+    setRows(parsedRows, `GitHub export (${url}) / ${firstSheetName}`);
     importCompanionMasterSheet(workbook, "GitHub export", firstSheetName);
   } catch (error) {
-    showImportError(`GitHub export nem tölthető be: ${error.message}. Ellenőrizd, hogy létezik-e: ${SHARED_EXPORT_URL}`);
+    showImportError(`GitHub export nem tölthető be: ${error.message}. Ellenőrizd, hogy létezik-e valamelyik: ${SHARED_EXPORT_URLS.join(", ")}`);
   } finally {
     sharedExportButton.disabled = false;
   }
+}
+
+async function fetchFirstAvailableExport() {
+  const cacheBuster = `v=${Date.now()}`;
+  const errors = [];
+
+  for (const url of SHARED_EXPORT_URLS) {
+    const separator = url.includes("?") ? "&" : "?";
+    const response = await fetch(`${url}${separator}${cacheBuster}`, { cache: "no-store" });
+    if (response.ok) return { response, url };
+    errors.push(`${url}: ${response.status}`);
+  }
+
+  throw new Error(`nem elérhető (${errors.join("; ")})`);
 }
 
 function handleMasterFileChange(event) {
