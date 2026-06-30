@@ -13,7 +13,7 @@ const STORAGE_KEYS = {
   masterStatus: "raktar-asszisztens-master-status-v1",
 };
 
-const SHARED_EXPORT_URL = "data/napi-export.xlsx";
+const SHARED_EXPORT_URL = "data/EXPORT.xlsx";
 
 const SAMPLE_ROWS = [
   {
